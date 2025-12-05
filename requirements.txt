@@ -9,3 +9,5 @@ feedparser
 requests
 pandas
 streamlit
+matplotlib
+seaborn
