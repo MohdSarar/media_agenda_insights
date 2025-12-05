@@ -1,0 +1,39 @@
+cnews:
+  label: "CNEWS"
+  feeds:
+    - name: "fil_info_general"
+      url: "https://www.cnews.fr/rss.xml"
+    - name: "politique"
+      url: "https://www.cnews.fr/rss/politique.xml"
+    - name: "societe"
+      url: "https://www.cnews.fr/rss/societe.xml"
+
+bfmtv:
+  label: "BFMTV"
+  feeds:
+    - name: "alerte_info"
+      url: "https://www.bfmtv.com/rss/infos/flux-rss/flux-toutes-les-actualites/"
+    - name: "politique"
+      url: "https://www.bfmtv.com/rss/politique/"
+    - name: "societe"
+      url: "https://www.bfmtv.com/rss/societe/"
+
+franceinfo:
+  label: "FRANCEINFO"
+  feeds:
+    - name: "fil_info"
+      url: "https://www.francetvinfo.fr/titres.rss"
+    - name: "politique"
+      url: "https://www.francetvinfo.fr/politique.rss"
+    - name: "societe"
+      url: "https://www.francetvinfo.fr/societe.rss"
+
+tf1info:
+  label: "TF1INFO_LCI"
+  feeds:
+    - name: "actualites"
+      url: "https://www.tf1info.fr/rss/actualite.xml"
+    - name: "politique"
+      url: "https://www.tf1info.fr/rss/politique.xml"
+    - name: "societe"
+      url: "https://www.tf1info.fr/rss/societe.xml"

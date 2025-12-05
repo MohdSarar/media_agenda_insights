@@ -1,0 +1,11 @@
+ingestion_tv:
+  times: ["13:00", "23:00"]
+
+ingestion_presse:
+  times: ["23:00"]
+
+ingestion_social:
+  times: ["12:00", "22:00"]
+
+daily_processing:
+  time: "23:30"

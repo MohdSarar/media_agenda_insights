@@ -1,0 +1,11 @@
+psycopg2-binary
+python-dotenv
+stanza
+spacy
+beautifulsoup4
+nltk
+scikit-learn
+feedparser
+requests
+pandas
+streamlit

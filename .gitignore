@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+
+# Logs
+*.log
+
+# Env
+.env
+.env.*
+
+# venv local éventuel
+.venv/
+venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Data dumps éventuels
+*.csv
+*.tsv
+*.sqlite
+*.db
+*.jsonl
+data/
