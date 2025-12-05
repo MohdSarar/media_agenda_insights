@@ -138,6 +138,98 @@ def load_keywords_for_day(
     return df
 
 
+@st.cache_data
+def load_keywords_range(
+    start_date: date,
+    end_date: date,
+    media_type: str = "tv",
+) -> pd.DataFrame:
+    """
+    Agrège les mots-clés sur une période :
+    somme des counts par (date, source, media_type, word).
+    Sert à l'analyse de narratifs et au radar 'media bias'.
+    """
+    conn = get_connection()
+    query = """
+        SELECT
+            date,
+            source,
+            media_type,
+            word,
+            SUM(count) AS total_count
+        FROM keywords_daily
+        WHERE date BETWEEN %s AND %s
+    """
+    params = [start_date, end_date]
+
+    if media_type:
+        query += " AND media_type = %s"
+        params.append(media_type)
+
+    query += """
+        GROUP BY date, source, media_type, word
+        ORDER BY date ASC, source ASC, total_count DESC;
+    """
+
+    df = pd.read_sql_query(query, conn, params=params)
+
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date"])
+
+    return df
+
+
+@st.cache_data
+def load_lemmas_range(
+    start_date: date,
+    end_date: date,
+    media_type: str = "tv",
+) -> pd.DataFrame:
+    """
+    Agrège les lemmes sur une période :
+    compte de chaque lemme par source (et type média).
+    Utilisé pour l'analyse des narratifs & radar 'media bias'.
+    """
+    conn = get_connection()
+
+    query = """
+        SELECT
+            ar.published_at::date AS date,
+            ar.source,
+            ar.media_type,
+            ac.lemmas
+        FROM articles_clean ac
+        JOIN articles_raw ar ON ac.article_id = ar.id
+        WHERE ar.published_at::date BETWEEN %s AND %s
+    """
+    params = [start_date, end_date]
+
+    if media_type:
+        query += " AND ar.media_type = %s"
+        params.append(media_type)
+
+    df = pd.read_sql_query(query, conn, params=params)
+
+    if df.empty:
+        return df
+
+    # On explose le tableau de lemmes : chaque ligne = (date, source, media_type, lemma)
+    df = df.explode("lemmas").rename(columns={"lemmas": "lemma"})
+    df["lemma"] = df["lemma"].astype(str).str.lower()
+    df = df.dropna(subset=["lemma"])
+
+    # Agrégation : total par source / media_type / lemma
+    agg = (
+        df.groupby(["source", "media_type", "lemma"])
+        .size()
+        .reset_index(name="total_count")
+    )
+
+    return agg
+
+
+
 # ---------- Chargement des topics ----------
 
 @st.cache_data

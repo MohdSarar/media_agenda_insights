@@ -11,3 +11,5 @@ pandas
 streamlit
 matplotlib
 seaborn
+altair
+plotly

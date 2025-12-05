@@ -3,7 +3,9 @@
 import streamlit as st
 
 # ⚠️ Importer les vues depuis le sous-dossier "views" (même dossier que app.py)
-from views import overview, compare, topics
+from views import overview, compare, topics, narratives
+
+
 
 
 def main():
@@ -22,7 +24,8 @@ def main():
         - NLP & lemmatisation (Stanza + spaCy)
         - Top mots-clés & sujets (topic modeling)
         - Comparaison multi-chaînes
-        - Prêt pour déploiement cloud / Docker
+        - Analyse de narratifs & 'media bias'
+        - Architecture prête pour le cloud / Docker / big data
         """
     )
 
@@ -31,6 +34,7 @@ def main():
             "📺 Vue d'ensemble",
             "📊 Comparaison chaînes",
             "🧠 Exploration des sujets",
+            "🧩 Narratifs & biais médiatiques",
         ]
     )
 
@@ -43,6 +47,10 @@ def main():
     with tabs[2]:
         topics.render()
 
+    with tabs[3]:
+        narratives.render()
+
 
 if __name__ == "__main__":
     main()
+    

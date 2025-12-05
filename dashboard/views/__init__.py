@@ -2,4 +2,4 @@
 
 from . import overview, compare, topics
 
-__all__ = ["overview", "compare", "topics"]
+__all__ = ["overview", "compare", "topics", "narratives"]
