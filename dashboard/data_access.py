@@ -329,3 +329,44 @@ def load_word_trend(
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
     return df
+
+
+
+@st.cache_data
+def load_narrative_clusters() -> pd.DataFrame:
+    """
+    Charge tous les clusters de narratifs (narratives_clusters).
+    """
+    conn = get_connection()
+    df = pd.read_sql_query(
+        """
+        SELECT cluster_id, label, top_keywords, size, created_at
+        FROM narratives_clusters
+        ORDER BY size DESC;
+        """,
+        conn,
+    )
+    return df
+
+
+@st.cache_data
+def load_narrative_distribution_by_source() -> pd.DataFrame:
+    """
+    Distribution des narratifs par chaîne :
+    nombre d'articles par (cluster_id, source).
+    """
+    conn = get_connection()
+    df = pd.read_sql_query(
+        """
+        SELECT
+            na.cluster_id,
+            ar.source,
+            COUNT(*) AS article_count
+        FROM narratives_assignments na
+        JOIN articles_raw ar ON ar.id = na.article_id
+        GROUP BY na.cluster_id, ar.source
+        ORDER BY article_count DESC;
+        """,
+        conn,
+    )
+    return df

@@ -13,3 +13,7 @@ matplotlib
 seaborn
 altair
 plotly
+sentence-transformers
+scikit-learn
+numpy        # normalement déjà là
+torch        # déjà installé via stanza, mais tu peux le rappeler

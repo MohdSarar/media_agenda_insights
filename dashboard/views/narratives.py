@@ -12,6 +12,8 @@ from data_access import (
     get_sources,
     load_keywords_range,
     load_lemmas_range,
+    load_narrative_clusters,
+    load_narrative_distribution_by_source,
 )
 
 # Définition de grandes familles de narratifs (simplifiée)
@@ -204,3 +206,55 @@ def render():
     else:
         st.info("Pas de données de thèmes sur cette période.")
 
+        # ───────────────────────── SECTION 4 : Narratifs IA (clusters embeddings) ─────────────────────────
+    st.subheader("🧠 Narratifs découverts par clustering sémantique")
+
+    df_clusters = load_narrative_clusters()
+    df_dist = load_narrative_distribution_by_source()
+
+    if df_clusters.empty or df_dist.empty:
+        st.info(
+            "Aucun cluster de narratif trouvé. "
+            "Lance d'abord le pipeline : `python processing/narratives/embed_and_cluster.py`."
+        )
+        return
+
+    # Top narratifs
+    st.markdown("**Top narratifs (tous médias confondus)**")
+    st.dataframe(
+        df_clusters[["cluster_id", "label", "top_keywords", "size"]],
+        use_container_width=True,
+    )
+
+    # Distribution par chaîne (heatmap)
+    st.markdown("**Présence des narratifs par chaîne (nombre d'articles)**")
+
+    df_heat = df_dist.merge(
+        df_clusters[["cluster_id", "label"]],
+        on="cluster_id",
+        how="left",
+    )
+
+    pivot = pd.pivot_table(
+    df_heat,
+    index="label",
+    columns="source",
+    values="article_count",
+    aggfunc="sum",
+    fill_value=0,
+    )
+
+
+    chart = (
+        alt.Chart(pivot.reset_index().melt("label", var_name="source", value_name="articles"))
+        .mark_rect()
+        .encode(
+            x=alt.X("source:N", title="Chaîne"),
+            y=alt.Y("label:N", title="Narratif"),
+            color=alt.Color("articles:Q", title="Nb d'articles"),
+            tooltip=["label", "source", "articles"],
+        )
+        .properties(height=400)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
