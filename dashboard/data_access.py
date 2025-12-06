@@ -88,20 +88,39 @@ def get_available_dates() -> List[date]:
 
 
 @st.cache_data
-def get_sources() -> List[str]:
+def get_sources(media_type: Optional[str] = None) -> List[str]:
     """
-    Retourne la liste des chaînes (sources) présentes dans keywords_daily.
+    Retourne la liste des sources disponibles à partir de articles_raw.
+
+    - Si media_type est None  -> tous types de médias (tv + press).
+    - Si media_type = 'tv'    -> seulement les chaînes TV.
+    - Si media_type = 'press' -> seulement la presse écrite.
     """
-    try:
-        df = _read_table("keywords_daily", "DISTINCT source")
-        sources = df["source"].dropna().tolist()
-    except Exception:
-        sources = []
+    conn = get_connection()
 
-    if "ALL" not in sources:
-        sources = ["ALL"] + sources
+    # Construction de la requête de façon robuste
+    params: list = []
+    where_clauses = ["source IS NOT NULL"]
 
-    return sources
+    if media_type:
+        where_clauses.append("media_type = %s")
+        params.append(media_type)
+
+    where_sql = " AND ".join(where_clauses)
+
+    query = f"""
+        SELECT DISTINCT source
+        FROM articles_raw
+        WHERE {where_sql}
+        ORDER BY source;
+    """
+
+    df = pd.read_sql_query(query, conn, params=params or None)
+
+    sources = df["source"].dropna().tolist()
+    # On préfixe par ALL pour l'interface
+    return ["ALL"] + sources
+
 
 
 # ---------- Chargement des mots-clés ----------

@@ -4,7 +4,6 @@ stanza
 spacy
 beautifulsoup4
 nltk
-scikit-learn
 feedparser
 requests
 pandas

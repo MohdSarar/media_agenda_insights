@@ -1,0 +1,73 @@
+press:
+
+  lemonde:
+    label: "Le Monde"
+    feeds:
+      - name: "une"
+        url: "https://www.lemonde.fr/rss/une.xml"
+      - name: "politique"
+        url: "https://www.lemonde.fr/politique/rss_full.xml"
+      - name: "societe"
+        url: "https://www.lemonde.fr/societe/rss_full.xml"
+      - name: "economie"
+        url: "https://www.lemonde.fr/economie/rss_full.xml"
+
+  lefigaro:
+    label: "Le Figaro"
+    feeds:
+      - name: "actualites"
+        url: "https://www.lefigaro.fr/rss/figaro_actualites.xml"
+      - name: "politique"
+        url: "https://www.lefigaro.fr/rss/figaro_politique.xml"
+      - name: "societe"
+        url: "https://www.lefigaro.fr/rss/figaro_societes.xml"
+      - name: "economie"
+        url: "https://www.lefigaro.fr/rss/figaro_economie.xml"
+
+  liberation:
+    label: "Libération"
+    feeds:
+      - name: "general"
+        url: "https://www.liberation.fr/arc/outboundfeeds/rss-all/"
+
+  franceinfo_web:
+    label: "Franceinfo (Web)"
+    feeds:
+      - name: "une"
+        url: "https://www.francetvinfo.fr/titres.rss"
+      - name: "politique"
+        url: "https://www.francetvinfo.fr/politique.rss"
+      - name: "faits_divers"
+        url: "https://www.francetvinfo.fr/faits-divers.rss"
+
+  bfmtv_web:
+    label: "BFMTV (Web)"
+    feeds:
+      - name: "general"
+        url: "https://www.bfmtv.com/rss/info/flux-rss/flux-toutes-les-actualites/"
+      - name: "politique"
+        url: "https://www.bfmtv.com/politique/rss/"
+      - name: "faits_divers"
+        url: "https://www.bfmtv.com/faits-divers/rss/"
+
+  ladepeche:
+    label: "La Dépêche"
+    feeds:
+      - name: "general"
+        url: "https://www.ladepeche.fr/rss.xml"
+
+  vingtminutes:
+    label: "20 Minutes"
+    feeds:
+      - name: "france"
+        url: "https://www.20minutes.fr/feeds/rss-actu-france.xml"
+      - name: "politique"
+        url: "https://www.20minutes.fr/feeds/rss-politique.xml"
+      - name: "monde"
+        url: "https://www.20minutes.fr/feeds/rss-monde.xml"
+
+  huffpost:
+    label: "HuffPost France"
+    feeds:
+      - name: "general"
+        url: "https://www.huffingtonpost.fr/feeds/verticals/france/index.xml"
