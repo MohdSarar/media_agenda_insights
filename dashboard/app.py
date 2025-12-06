@@ -3,7 +3,7 @@
 import streamlit as st
 
 # ⚠️ Importer les vues depuis le sous-dossier "views" (même dossier que app.py)
-from views import overview, compare, topics, narratives
+from views import overview, compare, topics, narratives, analytics
 
 
 
@@ -35,6 +35,7 @@ def main():
             "📊 Comparaison chaînes",
             "🧠 Exploration des sujets",
             "🧩 Narratifs & biais médiatiques",
+            "📊 Analytics Insights",
         ]
     )
 
@@ -49,6 +50,9 @@ def main():
 
     with tabs[3]:
         narratives.render()
+
+    with tabs[4]:
+        analytics.render()
 
 
 if __name__ == "__main__":
