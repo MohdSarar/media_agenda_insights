@@ -409,18 +409,21 @@ Multi-layered cleanup pipeline:
 | Feature | Status |
 |---------|--------|
 | Modular ETL pipeline | ✅ Done |
-| PostgreSQL schema with indexes | ✅ Done |
+| PostgreSQL schema with indexed analytics tables | ✅ Done |
 | NLP pipeline (Stanza + spaCy) | ✅ Done |
+| Keyword extraction (TF-IDF + filtering) | ✅ Done |
 | Topic modeling (NMF) | ✅ Done |
 | Narrative clustering (Sentence-BERT + KMeans) | ✅ Done |
-| Streamlit dashboard | ✅ Done |
+| Media bias quantification (topic-level) | ✅ Done |
+| Topic spike detection (time-series anomaly) | ✅ Done |
+| Keyword / Topic / Theme lifetime analysis | ✅ Done |
+| Streamlit analytical dashboard | ✅ Done |
 | Airflow / Prefect ready | ✅ Done |
 | Full HTML article scraping | 🔜 Planned |
-| Social media (Reddit, Mastodon) | 🔜 Planned |
+| Social media ingestion (Reddit, Mastodon) | 🔜 Planned |
 | LLM-based topic labeling | 🔜 Planned |
-| Media bias quantification | 🔜 Planned |
-| Spike detection | 🔜 Planned |
 | Docker containerization | 🔜 Planned |
+
 
 ---
 
