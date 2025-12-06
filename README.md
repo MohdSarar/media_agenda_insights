@@ -23,7 +23,7 @@
 | **NLP** | Stanza (lemmatization), spaCy (NER), NLTK (stopwords) |
 | **ML/Embeddings** | Sentence-Transformers (multilingual MiniLM), scikit-learn (KMeans, NMF, TF-IDF) |
 | **Ingestion** | feedparser, BeautifulSoup4, requests |
-| **Dashboard** | Streamlit, Plotly, Altair, Matplotlib, Seaborn |
+| **Dashboard** | Streamlit, Plotly, Altair |
 | **Automation** | Bash pipeline (Docker-ready, Airflow-compatible) |
 
 ---
