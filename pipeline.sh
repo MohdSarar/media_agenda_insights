@@ -99,4 +99,16 @@ else
   echo "⚠️ processing/topics/extract_topics.py introuvable, étape topics ignorée."
 fi
 
+echo "---- Analyse des biais médiatiques ----"
+$PYTHON processing/bias/analyze_bias.py
+
+echo "---- Détection des emballements médiatiques (spikes) ----"
+$PYTHON processing/spikes/detect_spikes.py
+
+echo "---- Calcul des durées de vie médiatiques des mots-clés ----"
+$PYTHON processing/lifetime/compute_lifetime.py
+
+
 echo "=== Pipeline terminé avec succès ✅ ==="
+
+

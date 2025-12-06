@@ -68,13 +68,14 @@ def clean_lemmas(lemmas):
 
 def fetch_tv_docs_by_day(cur):
     """
-    Retourne date -> liste de (article_id, texte_doc)
+    Retourne date -> liste de (article_id, source, texte_doc)
     où texte_doc = lemmes nettoyés joinés par espace.
     """
     cur.execute("""
         SELECT
             ar.id,
             ar.published_at::date AS date,
+            ar.source,
             ac.lemmas
         FROM articles_raw ar
         JOIN articles_clean ac ON ac.article_id = ar.id
@@ -85,16 +86,18 @@ def fetch_tv_docs_by_day(cur):
     rows = cur.fetchall()
 
     docs_by_date = defaultdict(list)
-    for article_id, date, lemmas in rows:
+    for article_id, date, source, lemmas in rows:
         if not lemmas:
             continue
         cleaned = clean_lemmas(lemmas)
         if not cleaned:
             continue
         text = " ".join(cleaned)
-        docs_by_date[date].append((article_id, text))
+        # on garde maintenant aussi la source
+        docs_by_date[date].append((article_id, source, text))
 
     return docs_by_date
+
 
 
 def already_computed_dates(cur):
@@ -170,8 +173,10 @@ def compute_topics_daily():
                 logging.info(f"[{date}] déjà traitée, on saute.")
                 continue
 
-            article_ids = [a_id for (a_id, txt) in articles]
-            docs = [txt for (a_id, txt) in articles]
+            # articles = liste de (article_id, source, texte)
+            article_ids = [a_id for (a_id, src, txt) in articles]
+            sources = [src for (a_id, src, txt) in articles]
+            docs = [txt for (a_id, src, txt) in articles]
 
             if len(docs) < 3:
                 logging.info(f"[{date}] Trop peu de docs ({len(docs)}), on ignore.")
@@ -185,23 +190,50 @@ def compute_topics_daily():
                 logging.info(f"[{date}] aucun topic détecté.")
                 continue
 
+            # comptage global par topic
             topic_counts = Counter(doc_topic_ids)
+
+            # comptage par (source, topic_id)
+            source_topic_counts = Counter()
+            for src, topic_id in zip(sources, doc_topic_ids):
+                source_topic_counts[(src, int(topic_id))] += 1
+
+            # on garde la liste des sources présentes ce jour-là
+            unique_sources = sorted(set(sources))
 
             for t in topics_info:
                 tid = int(t["topic_id"])
                 keywords = t["keywords"]
-                articles_count = int(topic_counts.get(tid, 0))
                 topic_label = ", ".join(keywords[:3])
 
-                rows_to_insert.append((
-                    date,
-                    "ALL",          # toutes chaînes TV
-                    "tv",
-                    tid,
-                    topic_label,
-                    articles_count,
-                    keywords
-                ))
+                # 1) lignes par chaîne TV
+                for src in unique_sources:
+                    src_count = int(source_topic_counts.get((src, tid), 0))
+                    if src_count == 0:
+                        continue
+
+                    rows_to_insert.append((
+                        date,
+                        src,        # vraie source : cnews, bfmtv, etc.
+                        "tv",
+                        tid,
+                        topic_label,
+                        src_count,
+                        keywords
+                    ))
+
+                # 2) ligne agrégée "ALL" (pour dashboard current)
+                total_count = int(topic_counts.get(tid, 0))
+                if total_count > 0:
+                    rows_to_insert.append((
+                        date,
+                        "ALL",
+                        "tv",
+                        tid,
+                        topic_label,
+                        total_count,
+                        keywords
+                    ))
 
         if not rows_to_insert:
             logging.info("Aucun topic à insérer.")
