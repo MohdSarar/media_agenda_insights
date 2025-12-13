@@ -1,0 +1,41 @@
+reddit:
+  enabled: true
+  label: "REDDIT"
+  sources:
+    - name: "france"
+      subreddit: "france"
+      mode: "new"
+      limit: 100
+    - name: "actualite"
+      subreddit: "actualite"
+      mode: "new"
+      limit: 100
+
+mastodon:
+  enabled: true
+  label: "MASTODON"
+  sources:
+    - name: "mastodon.social_france"
+      base_url: "https://mastodon.social"
+      hashtags: ["france", "actualite"]
+      limit: 40
+
+youtube:
+  enabled: false
+  label: "YOUTUBE"
+  sources:
+    - name: "channels_fr_news"
+      type: "channel"
+      channel_ids: []
+    - name: "queries"
+      type: "query"
+      queries: ["actualité France", "politique France"]
+      limit: 25
+
+tiktok:
+  enabled: false
+  label: "TIKTOK"
+  sources:
+    - name: "hashtags"
+      hashtags: ["france", "actualite", "politique"]
+      limit: 50

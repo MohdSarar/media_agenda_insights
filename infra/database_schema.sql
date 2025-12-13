@@ -211,3 +211,72 @@ CREATE INDEX IF NOT EXISTS idx_narratives_assignments_article
   ON public.narratives_assignments USING btree (article_id);
 CREATE INDEX IF NOT EXISTS idx_narratives_assignments_cluster
   ON public.narratives_assignments USING btree (cluster_id);
+
+
+-- 1) Raw social posts (public signals only)
+CREATE TABLE IF NOT EXISTS social_posts_raw (
+  id BIGSERIAL PRIMARY KEY,
+  platform TEXT NOT NULL,           -- reddit | mastodon | youtube | tiktok
+  source TEXT NOT NULL,             -- subreddit | instance | channel | query
+  external_id TEXT NOT NULL,        -- post_id / toot_id / video_id
+  url TEXT,
+  title TEXT,
+  content TEXT,
+  author TEXT,
+  published_at TIMESTAMP,
+  lang_guess TEXT,
+  raw_json JSONB,
+  inserted_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (platform, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_raw_platform_date
+ON social_posts_raw(platform, published_at);
+
+-- 2) Clean social posts
+CREATE TABLE IF NOT EXISTS social_posts_clean (
+  id BIGSERIAL PRIMARY KEY,
+  platform TEXT NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  url TEXT,
+  title TEXT,
+  clean_text TEXT,
+  lang TEXT,
+  tokens JSONB,
+  lemmas JSONB,
+  entities JSONB,
+  hashtags JSONB,
+  processed_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (platform, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_clean_lang_date
+ON social_posts_clean(lang, processed_at);
+
+-- 3) Daily keywords (social)
+CREATE TABLE IF NOT EXISTS social_keywords_daily (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE NOT NULL,
+  platform TEXT NOT NULL,
+  source TEXT NOT NULL,
+  lang TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  score DOUBLE PRECISION,
+  n_docs INT,
+  UNIQUE (date, platform, source, lang, keyword)
+);
+
+-- 4) Daily topics (social)
+CREATE TABLE IF NOT EXISTS social_topics_daily (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE NOT NULL,
+  platform TEXT NOT NULL,
+  source TEXT NOT NULL,
+  lang TEXT NOT NULL,
+  topic_id INT NOT NULL,
+  top_terms JSONB,
+  weight DOUBLE PRECISION,
+  n_docs INT,
+  UNIQUE (date, platform, source, lang, topic_id)
+);

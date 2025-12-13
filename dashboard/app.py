@@ -3,7 +3,7 @@
 import streamlit as st
 
 # ⚠️ Importer les vues depuis le sous-dossier "views" (même dossier que app.py)
-from views import overview, compare, topics, narratives, analytics, france24_multilingue
+from views import overview, compare, topics, narratives, analytics, france24_multilingue, social_observable
 
 
 
@@ -37,6 +37,7 @@ def main():
             "🧩 Narratifs & biais médiatiques",
             "📊 Analytics Insights",
             "🌍 France 24 multilingue",
+            "Social Media"
         ]
     )
 
@@ -56,6 +57,8 @@ def main():
         analytics.render()
     with tabs[5]:
         france24_multilingue.render()
+    with tabs[6]:
+        social_observable.render()
 
 
 if __name__ == "__main__":
