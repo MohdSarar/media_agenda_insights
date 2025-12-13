@@ -20,14 +20,24 @@ register_default_jsonb(loads=lambda x: x)
 
 # ---------- Connexion DB ----------
 
-@st.cache_resource
+
 def get_connection():
     """
-    Connexion PostgreSQL réutilisable (cache côté Streamlit).
+    Connexion PostgreSQL réutilisée dans la session Streamlit.
+    Si la connexion est fermée (timeout / rerun), on la recrée.
     """
     if not DB_URL:
         raise RuntimeError("DATABASE_URL non défini dans .env")
-    return psycopg2.connect(DB_URL)
+
+    conn = st.session_state.get("_db_conn")
+
+    # psycopg2: closed == 0 => ouverte ; closed != 0 => fermée
+    if conn is None or getattr(conn, "closed", 1) != 0:
+        conn = psycopg2.connect(DB_URL)
+        st.session_state["_db_conn"] = conn
+
+    return conn
+
 
 
 # ---------- Helper générique ----------

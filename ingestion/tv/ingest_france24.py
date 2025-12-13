@@ -1,0 +1,144 @@
+import os
+import datetime as dt
+import logging
+
+import feedparser
+import psycopg2
+import yaml
+from dotenv import load_dotenv
+
+# Chargement de l'environnement
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+
+DB_URL = os.getenv("DATABASE_URL")
+
+CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),  # racine du projet
+    "infra", "config", "feeds_france24.yaml"
+)
+
+
+def load_feeds_config(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def get_db_connection():
+    if not DB_URL:
+        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
+    return psycopg2.connect(DB_URL)
+
+
+def parse_entry(entry):
+    """
+    Normalise les champs importants d'une entrée RSS/Atom.
+    """
+    title = entry.get("title", "").strip()
+
+    summary = entry.get("summary") or entry.get("description") or ""
+    summary = summary.strip()
+
+    url = entry.get("link") or entry.get("id")
+    if not url:
+        return None
+
+    published = None
+    if "published_parsed" in entry and entry.published_parsed:
+        published = dt.datetime(*entry.published_parsed[:6])
+    elif "updated_parsed" in entry and entry.updated_parsed:
+        published = dt.datetime(*entry.updated_parsed[:6])
+    else:
+        published = dt.datetime.utcnow()
+
+    return {
+        "title": title,
+        "summary": summary,
+        "url": url,
+        "published_at": published,
+    }
+
+
+def ingest_france24_feeds():
+    feeds_cfg = load_feeds_config(CONFIG_PATH)
+    logging.info(f"[F24] Chargement des flux France 24 depuis {CONFIG_PATH}")
+
+    conn = get_db_connection()
+    conn.autocommit = False
+    cur = conn.cursor()
+
+    inserted_count = 0
+
+    try:
+        for source_key, source_info in feeds_cfg.items():
+            label = source_info.get("label", source_key)
+            lang = source_info.get("lang", "fr")
+            media_type = source_info.get("media_type", "tv")
+            feeds = source_info.get("feeds", [])
+
+            for feed in feeds:
+                feed_name = feed.get("name")
+                feed_url = feed.get("url")
+
+                if not feed_url:
+                    logging.warning(f"[F24][{label}] Feed '{feed_name}' sans URL, ignoré.")
+                    continue
+
+                logging.info(f"[F24] Ingestion {label}/{feed_name} : {feed_url}")
+                parsed = feedparser.parse(feed_url)
+
+                if parsed.bozo:
+                    logging.warning(
+                        f"[F24] Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
+                    )
+
+                for entry in parsed.entries:
+                    data = parse_entry(entry)
+                    if not data:
+                        continue
+
+                    try:
+                        cur.execute(
+                            """
+                            INSERT INTO articles_raw_f24
+                                (source, lang, media_type, feed_name,
+                                 title, summary, url, published_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (url) DO NOTHING
+                            """,
+                            (
+                                source_key,      # ex: france24_en
+                                lang,            # fr / en / es / ar
+                                media_type,      # "tv"
+                                feed_name,
+                                data["title"],
+                                data["summary"],
+                                data["url"],
+                                data["published_at"],
+                            )
+                        )
+                        if cur.rowcount > 0:
+                            inserted_count += 1
+                    except Exception as e:
+                        logging.error(
+                            f"[F24] Erreur insertion (source={source_key}, url={data['url']}): {e}"
+                        )
+
+        conn.commit()
+        logging.info(f"[F24] Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
+
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"[F24] Erreur pendant l'ingestion France 24, rollback: {e}")
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+if __name__ == "__main__":
+    ingest_france24_feeds()
