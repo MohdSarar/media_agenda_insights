@@ -6,6 +6,11 @@ import feedparser
 import psycopg2
 import yaml
 from dotenv import load_dotenv
+from typing import Any, Mapping, Optional, TypedDict
+import datetime as dt
+from core.db_types import PGConnection, PGCursor
+from core.schemas import RSSArticle
+
 
 # Chargement des variables d'environnement (.env)
 load_dotenv()
@@ -15,6 +20,13 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
+class ParsedEntry(TypedDict):
+    title: str
+    summary: str
+    url: str
+    published_at: dt.datetime
+
+
 DB_URL = os.getenv("DATABASE_URL")
 
 CONFIG_PATH = os.path.join(
@@ -23,18 +35,18 @@ CONFIG_PATH = os.path.join(
 )
 
 
-def load_feeds_config(path: str) -> dict:
+def load_feeds_config(path: str) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def get_db_connection():
+def get_db_connection() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL manquant dans l'environnement")
     return psycopg2.connect(DB_URL)
 
 
-def parse_entry(entry):
+def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
     """
     Normalise les champs importants d'une entrée RSS/Atom.
     On gère plusieurs formats possibles sans se baser sur un site spécifique.
@@ -70,7 +82,7 @@ def parse_entry(entry):
     }
 
 
-def ingest_tv_feeds():
+def ingest_tv_feeds() -> None:
     feeds_cfg = load_feeds_config(CONFIG_PATH)
     logging.info(f"Chargement des flux TV depuis {CONFIG_PATH}")
 
@@ -107,6 +119,25 @@ def ingest_tv_feeds():
                     if not data:
                         continue
 
+                    # Validation Pydantic AVANT DB
+                    raw_data = {
+                        "source": source_key,         
+                        "category": feed_name,        
+                        "title": data["title"],
+                        "content": data["summary"],    
+                        "url": data["url"],
+                        "published_at": data["published_at"],
+                        "lang": "fr",             
+                    }
+
+                    try:
+                        article = RSSArticle(**raw_data)
+                    except Exception as e:
+                        logging.warning("Invalid TV article skipped (url=%s): %s", raw_data.get("url"), e)
+                        continue
+                            
+
+
                     try:
                         cur.execute(
                             """
@@ -116,13 +147,13 @@ def ingest_tv_feeds():
                             ON CONFLICT (url) DO NOTHING
                             """,
                             (
-                                source_key,         # ex: 'cnews'
-                                "tv",               # media_type
-                                feed_name,          # ex: 'actu_direct'
-                                data["title"],
-                                data["summary"],
-                                data["url"],
-                                data["published_at"],
+                                source_key,         
+                                "tv",               
+                                feed_name,          
+                                article.title,
+                                article.content,    
+                                str(article.url),   
+                                article.published_at,
                             )
                         )
                         if cur.rowcount > 0:

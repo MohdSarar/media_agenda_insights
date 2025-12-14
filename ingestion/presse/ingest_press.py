@@ -13,6 +13,12 @@ from dotenv import load_dotenv
 import yaml
 import feedparser
 
+from typing import Any, Mapping, Optional
+from datetime import datetime
+from core.db_types import PGConnection
+from datetime import datetime, timezone
+from core.schemas import RSSArticle
+
 # Charger les variables d'environnement (DATABASE_URL)
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
@@ -27,7 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = PROJECT_ROOT / "infra" / "config" / "feeds_press.yaml"
 
 
-def get_db_connection():
+def get_db_connection() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL manquant dans l'environnement")
     return psycopg2.connect(DB_URL)
@@ -61,7 +67,7 @@ def load_press_feeds() -> Dict[str, Any]:
     return press_cfg
 
 
-def parse_published(entry) -> Optional[datetime]:
+def parse_published(entry: Mapping[str, Any]) -> Optional[datetime]:
     """
     Convertit la date RSS en datetime naive compatible PostgreSQL.
     Retourne None si pas de date exploitable.
@@ -123,8 +129,7 @@ def article_exists_without_date(
     )
     return cur.fetchone() is not None
 
-
-def ingest_press():
+def ingest_press() -> None:
     """
     Ingestion des flux RSS de presse définis dans feeds_press.yaml
     vers la table articles_raw (media_type = 'press').
@@ -178,23 +183,43 @@ def ingest_press():
 
                         published_at = parse_published(entry)
 
-                        # Dédoublonnage par URL si disponible
-                        if article_url:
-                            cur.execute(
-                                "SELECT 1 FROM articles_raw WHERE url = %s LIMIT 1;",
-                                (article_url,),
-                            )
-                            if cur.fetchone():
-                                # Déjà vu, peu importe le flux (une, politique, etc.)
-                                continue
+                        #ىىnormalisation minimale : published_at doit exister pour la validation
+                        if published_at is None:
+                            published_at = datetime.now(timezone.utc)
 
-                        # Sinon, fallback sur les règles titre + date
-                        elif published_at is not None:
-                            if article_exists_with_date(cur, source_key, feed_name, title, published_at):
-                                continue
-                        else:
-                            if article_exists_without_date(cur, source_key, feed_name, title):
-                                continue
+                        #Aucun insert DB sans URL valide (RSSArticle.url est obligatoire)
+                        if not article_url:
+                            logging.warning(
+                                "Entrée presse ignorée (url manquante) source=%s feed=%s title=%s",
+                                source_key, feed_name, title[:120]
+                            )
+                            continue
+
+                        #validation Pydantic AVANT toute DB write
+                        raw_data = {
+                            "source": source_key,
+                            "category": feed_name,
+                            "title": title,
+                            "content": summary,
+                            "url": article_url,
+                            "published_at": published_at,
+                            "lang": "fr",
+                        }
+
+                        try:
+                            article = RSSArticle(**raw_data)
+                        except Exception as e:
+                            logging.warning("Invalid press article skipped (url=%s): %s", article_url, e)
+                            continue
+
+                        #dédoublonnage par URL si disponible
+                        cur.execute(
+                            "SELECT 1 FROM articles_raw WHERE url = %s LIMIT 1;",
+                            (str(article.url),),
+                        )
+                        if cur.fetchone():
+                            #déjà vu, peu importe le flux (une, politique, etc.)
+                            continue
 
                         # Insertion
                         cur.execute(
@@ -212,14 +237,14 @@ def ingest_press():
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
                             """,
                             (
-                                source_key,          # ex: lemonde, lefigaro...
-                                "press",             # media_type
-                                feed_name,           # ex: une, politique
-                                title,
-                                summary,
-                                article_url,         # stocké dans la colonne 'url' de la table
-                                None,                # raw_content (scraping full article plus tard)
-                                published_at,
+                                source_key,           # ex: lemonde, lefigaro...
+                                "press",              # media_type
+                                feed_name,            # ex: une, politique
+                                article.title,
+                                article.content,
+                                str(article.url),     #validé + normalisé
+                                None,                 # raw_content (scraping full article plus tard)
+                                article.published_at, # toujours présent
                             ),
                         )
                         total_inserted += 1

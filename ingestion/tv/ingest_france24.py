@@ -7,6 +7,18 @@ import psycopg2
 import yaml
 from dotenv import load_dotenv
 
+from typing import Any, Mapping, Optional, TypedDict
+import datetime as dt
+from core.db_types import PGConnection
+from core.schemas import RSSArticle
+
+
+class ParsedEntry(TypedDict):
+    title: str
+    summary: str
+    url: str
+    published_at: dt.datetime
+
 # Chargement de l'environnement
 load_dotenv()
 
@@ -23,18 +35,18 @@ CONFIG_PATH = os.path.join(
 )
 
 
-def load_feeds_config(path: str) -> dict:
+def load_feeds_config(path: str) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def get_db_connection():
+def get_db_connection() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL manquant dans l'environnement")
     return psycopg2.connect(DB_URL)
 
 
-def parse_entry(entry):
+def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
     """
     Normalise les champs importants d'une entrée RSS/Atom.
     """
@@ -63,7 +75,7 @@ def parse_entry(entry):
     }
 
 
-def ingest_france24_feeds():
+def ingest_france24_feeds() -> None:
     feeds_cfg = load_feeds_config(CONFIG_PATH)
     logging.info(f"[F24] Chargement des flux France 24 depuis {CONFIG_PATH}")
 
@@ -101,6 +113,23 @@ def ingest_france24_feeds():
                     if not data:
                         continue
 
+                     # ✅ Validation Pydantic AVANT DB
+                    raw_data = {
+                        "source": source_key,          
+                        "category": feed_name,         
+                        "title": data["title"],
+                        "content": data["summary"],
+                        "url": data["url"],
+                        "published_at": data["published_at"],
+                        "lang": lang,                   
+                    }
+
+                    try:
+                        article = RSSArticle(**raw_data)
+                    except Exception as e:
+                        logging.warning("[F24] Invalid article skipped (url=%s): %s", raw_data.get("url"), e)
+                        continue
+
                     try:
                         cur.execute(
                             """
@@ -111,14 +140,14 @@ def ingest_france24_feeds():
                             ON CONFLICT (url) DO NOTHING
                             """,
                             (
-                                source_key,      # ex: france24_en
-                                lang,            # fr / en / es / ar
-                                media_type,      # "tv"
+                                source_key,
+                                article.lang,
+                                media_type,
                                 feed_name,
-                                data["title"],
-                                data["summary"],
-                                data["url"],
-                                data["published_at"],
+                                article.title,
+                                article.content,
+                                str(article.url),
+                                article.published_at,
                             )
                         )
                         if cur.rowcount > 0:
