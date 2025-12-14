@@ -1,7 +1,7 @@
 # processing/keywords/extract_france24_keywords.py
 
 import os
-import logging
+from core.logging import get_logger
 from collections import Counter, defaultdict
 
 import psycopg2
@@ -17,12 +17,7 @@ from core.db_types import PGConnection, PGCursor
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [FR24-KEYS] %(message)s"
-)
-
+logger = get_logger(__name__)
 # --- Stopwords multilingues France 24 ---
 
 # Français
@@ -183,7 +178,7 @@ def compute_france24_keywords_daily() -> None:
         groups = fetch_lemmas_by_group(cur)
         done_keys = already_computed_keys(cur)
 
-        logging.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
+        logger.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
         rows_to_insert = []
 
         # Top mots-clés par (date, source, lang)
@@ -202,11 +197,11 @@ def compute_france24_keywords_daily() -> None:
                 )
 
         if not rows_to_insert:
-            logging.info("Aucun nouveau mot-clé France 24 à insérer.")
+            logger.info("Aucun nouveau mot-clé France 24 à insérer.")
             conn.rollback()
             return
 
-        logging.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily_f24...")
+        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily_f24...")
 
         execute_values(
             cur,
@@ -223,11 +218,11 @@ def compute_france24_keywords_daily() -> None:
         )
 
         conn.commit()
-        logging.info("keywords_daily_f24 mis à jour.")
+        logger.info("keywords_daily_f24 mis à jour.")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur extraction keywords France 24 : {e}")
+        logger.error(f"Erreur extraction keywords France 24 : {e}")
         raise
     finally:
         cur.close()

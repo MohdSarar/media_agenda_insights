@@ -1,5 +1,6 @@
 import os
-import logging
+from core.logging import get_logger
+
 import psycopg2
 import pandas as pd
 from psycopg2.extras import execute_values
@@ -9,7 +10,7 @@ from core.db_types import PGConnection
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [SPIKES] %(message)s")
+logger = get_logger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -79,20 +80,20 @@ def save_spikes(conn: PGConnection, df: pd.DataFrame) -> None:
     conn.commit()
 
 def main() -> None:
-    logging.info("Loading topic totals...")
+    logger.info("Loading topic totals...")
     conn = get_conn()
 
     try:
         df = load_topic_totals(conn)
         if df.empty:
-            logging.info("No topic data found.")
+            logger.info("No topic data found.")
             return
 
         spike_df = compute_spikes(df)
-        logging.info(f"{len(spike_df)} spikes detected.")
+        logger.info(f"{len(spike_df)} spikes detected.")
 
         save_spikes(conn, spike_df)
-        logging.info("Spike detection COMPLETE.")
+        logger.info("Spike detection COMPLETE.")
     finally:
         conn.close()
 

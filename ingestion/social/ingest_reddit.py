@@ -1,7 +1,8 @@
 import os
 import json
 import time
-import logging
+from core.logging import get_logger
+
 import datetime as dt
 
 import requests
@@ -27,10 +28,8 @@ class NormalizedRedditPost(TypedDict):
 # Chargement des variables d'environnement (.env)
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logger = get_logger(__name__)
+
 
 DB_URL = os.getenv("DATABASE_URL")
 SOCIAL_CFG_PATH = os.getenv("SOCIAL_CFG_PATH", "infra/config/feeds_social.yaml")
@@ -166,12 +165,12 @@ def main() -> None:
     reddit_cfg = (cfg or {}).get("reddit") or {}
 
     if not reddit_cfg.get("enabled", True):
-        logging.info("Reddit ingestion désactivée (reddit.enabled=false).")
+        logger.info("Reddit ingestion désactivée (reddit.enabled=false).")
         return
 
     sources = reddit_cfg.get("sources") or []
     if not sources:
-        logging.warning("Aucune source Reddit dans feeds_social.yaml (reddit.sources).")
+        logger.warning("Aucune source Reddit dans feeds_social.yaml (reddit.sources).")
         return
 
     conn = connect_db()
@@ -186,11 +185,11 @@ def main() -> None:
             limit = int(src.get("limit") or 100)
 
             if not subreddit:
-                logging.warning("Source Reddit ignorée (subreddit manquant) : %s", src)
+                logger.warning("Source Reddit ignorée (subreddit manquant) : %s", src)
                 continue
 
             source_key = name if name else subreddit
-            logging.info("Fetching Reddit: r/%s (%s, limit=%s)", subreddit, mode, limit)
+            logger.info("Fetching Reddit: r/%s (%s, limit=%s)", subreddit, mode, limit)
 
             data = reddit_fetch(subreddit=subreddit, mode=mode, limit=limit)
             children = (((data or {}).get("data") or {}).get("children")) or []
@@ -205,10 +204,10 @@ def main() -> None:
             total_inserted += ins
             total_skipped += skp
 
-            logging.info("Reddit r/%s -> inserted=%s skipped=%s (fetched=%s)", subreddit, ins, skp, len(posts))
+            logger.info("Reddit r/%s -> inserted=%s skipped=%s (fetched=%s)", subreddit, ins, skp, len(posts))
             time.sleep(DEFAULT_SLEEP_S)
 
-        logging.info("DONE Reddit ingestion. total_inserted=%s total_skipped=%s", total_inserted, total_skipped)
+        logger.info("DONE Reddit ingestion. total_inserted=%s total_skipped=%s", total_inserted, total_skipped)
 
     finally:
         try:

@@ -1,6 +1,5 @@
 import os
-import logging
-
+from core.logging import get_logger
 import psycopg2
 from psycopg2.extras import Json
 from dotenv import load_dotenv
@@ -17,12 +16,7 @@ from core.db_types import PGConnection, PGCursor, JsonDict, JsonList
 load_dotenv()
 
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
+logger = get_logger(__name__)
 # ⚠️ À exécuter UNE SEULE FOIS dans un script à part ou en shell :
 # import stanza; stanza.download('fr')
 # python -m spacy download fr_core_news_sm
@@ -158,7 +152,7 @@ def process_articles()  -> None:
 
     try:
         articles = fetch_unprocessed_articles(cur)
-        logging.info(f"{len(articles)} articles à traiter.")
+        logger.info(f"{len(articles)} articles à traiter.")
 
         count = 0
 
@@ -180,11 +174,11 @@ def process_articles()  -> None:
             count += 1
 
         conn.commit()
-        logging.info(f"Traitement NLP (Stanza + spaCy) terminé. Articles nettoyés : {count}")
+        logger.info(f"Traitement NLP (Stanza + spaCy) terminé. Articles nettoyés : {count}")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur NLP (Stanza + spaCy) : {e}")
+        logger.error(f"Erreur NLP (Stanza + spaCy) : {e}")
         raise
 
     finally:

@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+from core.logging import get_logger
 import datetime as dt
 from collections import defaultdict
 
@@ -17,8 +17,7 @@ from typing import Any, Iterable, Sequence
 from core.db_types import PGConnection
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-
+logger = get_logger(__name__)
 DB_URL = os.getenv("DATABASE_URL")
 
 DAYS_BACK = int(os.getenv("SOCIAL_KEYWORDS_DAYS_BACK", "3"))
@@ -270,7 +269,7 @@ def main() -> None:
     conn = connect_db()
     try:
         data = fetch_docs(conn, start_date, end_date)
-        logging.info("Fetched %s docs (from %s to %s).", len(data), start_date, end_date)
+        logger.info("Fetched %s docs (from %s to %s).", len(data), start_date, end_date)
 
         groups = defaultdict(list)  # (date, platform, source, lang) -> [texts]
         for d, platform, source, lang, text in data:
@@ -307,9 +306,9 @@ def main() -> None:
         if all_rows:
             upsert_keywords(conn, all_rows)
             conn.commit()
-            logging.info("Upserted %s rows into social_keywords_daily.", len(all_rows))
+            logger.info("Upserted %s rows into social_keywords_daily.", len(all_rows))
         else:
-            logging.info("No keyword rows to upsert.")
+            logger.info("No keyword rows to upsert.")
 
     finally:
         conn.close()

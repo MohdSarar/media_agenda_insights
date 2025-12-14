@@ -1,7 +1,7 @@
 # processing/narratives/embed_and_cluster.py
 
 import os
-import logging
+from core.logging import get_logger
 from collections import Counter
 
 import numpy as np
@@ -19,13 +19,7 @@ from core.db_types import PGConnection
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
-
+logger = get_logger(__name__)
 # ---------------- Connexion DB ----------------
 
 def get_conn() -> PGConnection:
@@ -56,7 +50,7 @@ def fetch_articles_for_narratives(conn: PGConnection) -> pd.DataFrame:
         ORDER BY ar.published_at ASC;
     """
     df = pd.read_sql_query(query, conn)
-    logging.info(f"{len(df)} articles chargés pour les narratifs.")
+    logger.info(f"{len(df)} articles chargés pour les narratifs.")
     return df
 
 
@@ -83,10 +77,10 @@ def compute_embeddings(texts: list[str], model_name: str = "sentence-transformer
     Calcule les embeddings à partir d'un modèle Sentence-Transformers.
     Modèle multilingue adapté au français.
     """
-    logging.info(f"Chargement du modèle d'embeddings : {model_name}")
+    logger.info(f"Chargement du modèle d'embeddings : {model_name}")
     model = SentenceTransformer(model_name)
 
-    logging.info("Calcul des embeddings...")
+    logger.info("Calcul des embeddings...")
     embeddings = model.encode(
         texts,
         batch_size=64,
@@ -94,7 +88,7 @@ def compute_embeddings(texts: list[str], model_name: str = "sentence-transformer
         convert_to_numpy=True,
         normalize_embeddings=True,
     )
-    logging.info(f"Embeddings calculés : shape = {embeddings.shape}")
+    logger.info(f"Embeddings calculés : shape = {embeddings.shape}")
     return embeddings
 
 
@@ -109,7 +103,7 @@ def cluster_embeddings(
     Clusterisation des embeddings avec MiniBatchKMeans.
     n_clusters peut être ajusté dans une future config YAML.
     """
-    logging.info(f"Lancement du clustering MiniBatchKMeans (n_clusters={n_clusters})...")
+    logger.info(f"Lancement du clustering MiniBatchKMeans (n_clusters={n_clusters})...")
     kmeans = MiniBatchKMeans(
         n_clusters=n_clusters,
         random_state=random_state,
@@ -117,7 +111,7 @@ def cluster_embeddings(
         max_iter=200,
     )
     labels = kmeans.fit_predict(embeddings)
-    logging.info("Clustering terminé.")
+    logger.info("Clustering terminé.")
     return labels
 
 
@@ -275,7 +269,7 @@ def build_cluster_summaries(df: pd.DataFrame, labels: np.ndarray, top_k: int = 1
         )
 
     clusters_df = pd.DataFrame(rows)
-    logging.info(f"{len(clusters_df)} clusters résumés.")
+    logger.info(f"{len(clusters_df)} clusters résumés.")
     return df, clusters_df
 
 
@@ -287,7 +281,7 @@ def reset_narratives_tables(conn: PGConnection) -> None:
         cur.execute("TRUNCATE TABLE narratives_assignments CASCADE;")
         cur.execute("TRUNCATE TABLE narratives_clusters CASCADE;")
     conn.commit()
-    logging.info("Tables narratives_* vidées.")
+    logger.info("Tables narratives_* vidées.")
 
 
 def insert_clusters(conn: PGConnection, clusters_df: pd.DataFrame) -> None:
@@ -304,7 +298,7 @@ def insert_clusters(conn: PGConnection, clusters_df: pd.DataFrame) -> None:
     with conn.cursor() as cur:
         execute_values(cur, query, records)
     conn.commit()
-    logging.info(f"{len(records)} lignes insérées dans narratives_clusters.")
+    logger.info(f"{len(records)} lignes insérées dans narratives_clusters.")
 
 
 def insert_assignments(conn: PGConnection, df_with_clusters: pd.DataFrame) -> None:
@@ -321,7 +315,7 @@ def insert_assignments(conn: PGConnection, df_with_clusters: pd.DataFrame) -> No
     with conn.cursor() as cur:
         execute_values(cur, query, records)
     conn.commit()
-    logging.info(f"{len(records)} lignes insérées dans narratives_assignments.")
+    logger.info(f"{len(records)} lignes insérées dans narratives_assignments.")
 
 
 # ---------------- Main pipeline ----------------
@@ -332,7 +326,7 @@ def main() -> None:
     try:
         df = fetch_articles_for_narratives(conn)
         if df.empty:
-            logging.warning("Aucun article disponible pour le clustering.")
+            logger.warning("Aucun article disponible pour le clustering.")
             return
 
         texts = build_text_column(df)
@@ -346,7 +340,7 @@ def main() -> None:
         insert_clusters(conn, clusters_df)
         insert_assignments(conn, df_with_clusters)
 
-        logging.info("Pipeline narratifs (embeddings + clustering) terminé avec succès.")
+        logger.info("Pipeline narratifs (embeddings + clustering) terminé avec succès.")
 
     finally:
         conn.close()

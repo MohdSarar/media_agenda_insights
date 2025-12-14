@@ -1,6 +1,7 @@
 import os
 import datetime as dt
-import logging
+from core.logging import get_logger
+
 
 import feedparser
 import psycopg2
@@ -15,10 +16,8 @@ from core.schemas import RSSArticle
 # Chargement des variables d'environnement (.env)
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logger = get_logger(__name__)
+
 
 class ParsedEntry(TypedDict):
     title: str
@@ -84,7 +83,7 @@ def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
 
 def ingest_tv_feeds() -> None:
     feeds_cfg = load_feeds_config(CONFIG_PATH)
-    logging.info(f"Chargement des flux TV depuis {CONFIG_PATH}")
+    logger.info(f"Chargement des flux TV depuis {CONFIG_PATH}")
 
     conn = get_db_connection()
     conn.autocommit = False
@@ -102,15 +101,15 @@ def ingest_tv_feeds() -> None:
                 feed_url = feed.get("url")
 
                 if not feed_url:
-                    logging.warning(f"[{label}] Feed '{feed_name}' sans URL, ignoré.")
+                    logger.warning(f"[{label}] Feed '{feed_name}' sans URL, ignoré.")
                     continue
 
-                logging.info(f"Ingestion feed {label}/{feed_name} : {feed_url}")
+                logger.info(f"Ingestion feed {label}/{feed_name} : {feed_url}")
 
                 parsed = feedparser.parse(feed_url)
 
                 if parsed.bozo:
-                    logging.warning(
+                    logger.warning(
                         f"Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
                     )
 
@@ -133,7 +132,7 @@ def ingest_tv_feeds() -> None:
                     try:
                         article = RSSArticle(**raw_data)
                     except Exception as e:
-                        logging.warning("Invalid TV article skipped (url=%s): %s", raw_data.get("url"), e)
+                        logger.warning("Invalid TV article skipped (url=%s): %s", raw_data.get("url"), e)
                         continue
                             
 
@@ -159,16 +158,16 @@ def ingest_tv_feeds() -> None:
                         if cur.rowcount > 0:
                             inserted_count += 1
                     except Exception as e:
-                        logging.error(
+                        logger.error(
                             f"Erreur insertion article (source={source_key}, url={data['url']}): {e}"
                         )
 
         conn.commit()
-        logging.info(f"Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
+        logger.info(f"Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur pendant l'ingestion TV, rollback effectué: {e}")
+        logger.error(f"Erreur pendant l'ingestion TV, rollback effectué: {e}")
         raise
     finally:
         cur.close()

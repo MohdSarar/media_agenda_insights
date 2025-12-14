@@ -1,6 +1,7 @@
 import os
 import datetime as dt
-import logging
+from core.logging import get_logger
+
 
 import feedparser
 import psycopg2
@@ -22,10 +23,8 @@ class ParsedEntry(TypedDict):
 # Chargement de l'environnement
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logger = get_logger(__name__)
+
 
 DB_URL = os.getenv("DATABASE_URL")
 
@@ -77,7 +76,7 @@ def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
 
 def ingest_france24_feeds() -> None:
     feeds_cfg = load_feeds_config(CONFIG_PATH)
-    logging.info(f"[F24] Chargement des flux France 24 depuis {CONFIG_PATH}")
+    logger.info(f"[F24] Chargement des flux France 24 depuis {CONFIG_PATH}")
 
     conn = get_db_connection()
     conn.autocommit = False
@@ -97,14 +96,14 @@ def ingest_france24_feeds() -> None:
                 feed_url = feed.get("url")
 
                 if not feed_url:
-                    logging.warning(f"[F24][{label}] Feed '{feed_name}' sans URL, ignoré.")
+                    logger.warning(f"[F24][{label}] Feed '{feed_name}' sans URL, ignoré.")
                     continue
 
-                logging.info(f"[F24] Ingestion {label}/{feed_name} : {feed_url}")
+                logger.info(f"[F24] Ingestion {label}/{feed_name} : {feed_url}")
                 parsed = feedparser.parse(feed_url)
 
                 if parsed.bozo:
-                    logging.warning(
+                    logger.warning(
                         f"[F24] Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
                     )
 
@@ -127,7 +126,7 @@ def ingest_france24_feeds() -> None:
                     try:
                         article = RSSArticle(**raw_data)
                     except Exception as e:
-                        logging.warning("[F24] Invalid article skipped (url=%s): %s", raw_data.get("url"), e)
+                        logger.warning("[F24] Invalid article skipped (url=%s): %s", raw_data.get("url"), e)
                         continue
 
                     try:
@@ -153,16 +152,16 @@ def ingest_france24_feeds() -> None:
                         if cur.rowcount > 0:
                             inserted_count += 1
                     except Exception as e:
-                        logging.error(
+                        logger.error(
                             f"[F24] Erreur insertion (source={source_key}, url={data['url']}): {e}"
                         )
 
         conn.commit()
-        logging.info(f"[F24] Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
+        logger.info(f"[F24] Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"[F24] Erreur pendant l'ingestion France 24, rollback: {e}")
+        logger.error(f"[F24] Erreur pendant l'ingestion France 24, rollback: {e}")
         raise
     finally:
         cur.close()

@@ -1,6 +1,6 @@
-import os
-import logging
 from __future__ import annotations
+import os
+from core.logging import get_logger
 from typing import Any, Optional
 import psycopg2
 import pandas as pd
@@ -10,8 +10,7 @@ from dotenv import load_dotenv
 from core.db_types import PGConnection
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [KW-LIFETIME] %(message)s")
-
+logger = get_logger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 GAP_THRESHOLD = 2   # topic survives if gap <= 2 days
 
@@ -104,12 +103,12 @@ def main() -> None:
     try:
         df = load_keywords(conn)
         if df.empty:
-            logging.info("No keyword data.")
+            logger.info("No keyword data.")
             return
 
         rows = compute_lifetime(df)
         save(conn, rows)
-        logging.info("Keyword lifetime COMPLETE.")
+        logger.info("Keyword lifetime COMPLETE.")
     finally:
         conn.close()
 

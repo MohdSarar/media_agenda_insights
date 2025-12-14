@@ -1,7 +1,7 @@
 import os
 import re
 import json
-import logging
+from core.logging import get_logger
 from typing import Optional, Dict, Any, List, Tuple
 
 import psycopg2
@@ -30,9 +30,7 @@ except Exception:
     stanza = None
 
 load_dotenv()
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-
+logger = get_logger(__name__)
 DB_URL = os.getenv("DATABASE_URL")
 BATCH_SIZE = int(os.getenv("SOCIAL_NLP_BATCH_SIZE", "200"))
 
@@ -151,14 +149,14 @@ def get_spacy_pipeline(lang: str)  -> SpacyLanguage:
     try:
         return spacy.load(model_env, disable=["textcat"])
     except Exception as e:
-        logging.warning("spaCy model not available for lang=%s (%s). Fallback simple tokenization.", lang, e)
+        logger.warning("spaCy model not available for lang=%s (%s). Fallback simple tokenization.", lang, e)
         return None
 
 
 _STANZA_PIPELINES: Dict[str, Any] = {}
 
 
-def get_stanza_pipeline(lang: str)  -> stanza.Pipeline: 
+def get_stanza_pipeline(lang: str)  -> stanza.Pipeline:  # type: ignore
     """
     Stanza is mainly useful for Arabic here.
     You can enable it if you already use Stanza in your project.
@@ -179,7 +177,7 @@ def get_stanza_pipeline(lang: str)  -> stanza.Pipeline:
         _STANZA_PIPELINES[lang] = p
         return p
     except Exception as e:
-        logging.warning("Stanza pipeline not available for Arabic (%s). Fallback simple tokenization.", e)
+        logger.warning("Stanza pipeline not available for Arabic (%s). Fallback simple tokenization.", e)
         return None
 
 
@@ -297,10 +295,10 @@ def main() -> None:
         while True:
             batch = fetch_unprocessed(conn, BATCH_SIZE)
             if not batch:
-                logging.info("No new social posts to process. Done.")
+                logger.info("No new social posts to process. Done.")
                 break
 
-            logging.info("Processing batch size=%s", len(batch))
+            logger.info("Processing batch size=%s", len(batch))
 
             for row in batch:
                 # IMPORTANT: if content is NULL, we use title (your observation is normal)
@@ -331,10 +329,10 @@ def main() -> None:
                 total += 1
 
             conn.commit()
-            logging.info("Committed batch. total_processed=%s", total)
+            logger.info("Committed batch. total_processed=%s", total)
 
     except KeyboardInterrupt:
-        logging.warning("Interrupted by user. Committing current transaction if possible.")
+        logger.warning("Interrupted by user. Committing current transaction if possible.")
         try:
             conn.commit()
         except Exception:

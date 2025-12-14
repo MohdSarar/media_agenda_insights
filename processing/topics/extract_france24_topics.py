@@ -2,7 +2,7 @@
 
 import os
 import re
-import logging
+from core.logging import get_logger
 from collections import defaultdict, Counter
 
 import psycopg2
@@ -20,13 +20,7 @@ from core.db_types import PGConnection, PGCursor
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [FR24-TOPICS] %(message)s"
-)
-
-
+logger = get_logger(__name__)
 # ----------------------------
 # Stopwords + “bruit” par langue
 # ----------------------------
@@ -213,7 +207,7 @@ def compute_france24_topics_daily() -> None:
         groups = fetch_docs_by_group(cur)
         done = already_computed_keys(cur)
 
-        logging.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
+        logger.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
         rows_to_insert = []
 
         # Pour un "ALL" par (date, lang) (utile pour une vue globale par langue)
@@ -227,7 +221,7 @@ def compute_france24_topics_daily() -> None:
 
             topic_keywords, topic_counts = extract_topics(docs)
             if not topic_keywords:
-                logging.info(f"[{date}] {source}/{lang}: aucun topic détecté (docs={len(docs)}).")
+                logger.info(f"[{date}] {source}/{lang}: aucun topic détecté (docs={len(docs)}).")
                 continue
 
             for tid, keywords in topic_keywords.items():
@@ -259,11 +253,11 @@ def compute_france24_topics_daily() -> None:
                 ))
 
         if not rows_to_insert:
-            logging.info("Aucun topic France 24 à insérer.")
+            logger.info("Aucun topic France 24 à insérer.")
             conn.rollback()
             return
 
-        logging.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily_f24...")
+        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily_f24...")
 
         execute_values(
             cur,
@@ -282,11 +276,11 @@ def compute_france24_topics_daily() -> None:
         )
 
         conn.commit()
-        logging.info("topics_daily_f24 mis à jour.")
+        logger.info("topics_daily_f24 mis à jour.")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur topics_daily_f24 : {e}")
+        logger.error(f"Erreur topics_daily_f24 : {e}")
         raise
     finally:
         cur.close()

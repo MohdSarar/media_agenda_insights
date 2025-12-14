@@ -1,7 +1,7 @@
 import os
 import re
 import json
-import logging
+from core.logging import get_logger
 import datetime as dt
 from collections import defaultdict
 
@@ -17,8 +17,7 @@ from nltk.corpus import stopwords as nltk_stopwords
 from typing import Any
 from core.db_types import PGConnection
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-
+logger = get_logger(__name__)
 DB_URL = os.getenv("DATABASE_URL")
 
 DAYS_BACK = int(os.getenv("SOCIAL_TOPICS_DAYS_BACK", "3"))
@@ -210,7 +209,7 @@ def main() -> None:
     conn = connect_db()
     try:
         data = fetch_docs(conn, start_date, end_date)
-        logging.info("Fetched %s docs (from %s to %s).", len(data), start_date, end_date)
+        logger.info("Fetched %s docs (from %s to %s).", len(data), start_date, end_date)
 
         groups = defaultdict(list)
         for d, platform, source, lang, text in data:
@@ -286,7 +285,7 @@ def main() -> None:
                 ))
 
         if not rows:
-            logging.info("No topic rows to upsert.")
+            logger.info("No topic rows to upsert.")
             return
 
         sql = """
@@ -309,7 +308,7 @@ def main() -> None:
             )
 
         conn.commit()
-        logging.info("Upserted %s topic rows into social_topics_daily.", len(rows))
+        logger.info("Upserted %s topic rows into social_topics_daily.", len(rows))
 
     finally:
         conn.close()

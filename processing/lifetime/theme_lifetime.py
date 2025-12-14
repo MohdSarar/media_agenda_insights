@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-import logging
+from core.logging import get_logger
 from typing import Any, Optional
 import psycopg2
 import pandas as pd
@@ -11,8 +11,7 @@ from dotenv import load_dotenv
 from core.db_types import PGConnection
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [THEME-LIFETIME] %(message)s")
-
+logger = get_logger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 GAP_THRESHOLD = 2
 
@@ -113,7 +112,7 @@ def main() -> None:
         df = load_themes(conn)
         rows = compute_lifetime(df)
         save(conn, rows)
-        logging.info("Theme lifetime COMPLETE.")
+        logger.info("Theme lifetime COMPLETE.")
     finally:
         conn.close()
 

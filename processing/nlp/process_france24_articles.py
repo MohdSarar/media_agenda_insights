@@ -1,7 +1,7 @@
 # processing/nlp/process_france24_articles.py
 
 import os
-import logging
+from core.logging import get_logger
 import re
 
 import psycopg2
@@ -17,12 +17,7 @@ from core.db_types import PGConnection
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [FR24-NLP] %(message)s"
-)
-
+logger = get_logger(__name__)
 # spaCy FR (fallback)
 NLP_FR = spacy.load("fr_core_news_sm")
 
@@ -112,7 +107,7 @@ def process_france24_articles()  -> None:
         """)
 
         rows = cur.fetchall()
-        logging.info(f"{len(rows)} articles France 24 à traiter.")
+        logger.info(f"{len(rows)} articles France 24 à traiter.")
 
         if not rows:
             return
@@ -136,7 +131,7 @@ def process_france24_articles()  -> None:
             ))
 
         if not to_insert:
-            logging.info("Aucun article NLP exploitable.")
+            logger.info("Aucun article NLP exploitable.")
             return
 
         execute_values(
@@ -151,11 +146,11 @@ def process_france24_articles()  -> None:
         )
 
         conn.commit()
-        logging.info(f"{len(to_insert)} articles France 24 traités (NLP).")
+        logger.info(f"{len(to_insert)} articles France 24 traités (NLP).")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur NLP France 24 : {e}")
+        logger.error(f"Erreur NLP France 24 : {e}")
         raise
 
     finally:

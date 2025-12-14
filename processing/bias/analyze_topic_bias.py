@@ -1,5 +1,6 @@
 import os
-import logging
+from core.logging import get_logger
+
 import psycopg2
 import pandas as pd
 from psycopg2.extras import execute_values
@@ -13,7 +14,8 @@ DATABASE_URL = os.getenv(
     "postgresql://media_user:media_pass@localhost:5432/media_agenda_insights"
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [BIAS] %(message)s")
+logger = get_logger(__name__)
+
 
 def get_conn() -> PGConnection:
     return psycopg2.connect(DATABASE_URL)
@@ -60,7 +62,7 @@ def compute_bias(df: pd.DataFrame) -> pd.DataFrame:
 
 def save_bias(conn: PGConnection, df: pd.DataFrame) -> None:
     if df.empty:
-        logging.info("No bias results to save.")
+        logger.info("No bias results to save.")
         return
 
     sql = """
@@ -81,17 +83,17 @@ def save_bias(conn: PGConnection, df: pd.DataFrame) -> None:
     conn.commit()
 
 def main() -> None:
-    logging.info("Loading topic data...")
+    logger.info("Loading topic data...")
     conn = get_conn()
     try:
         df = load_topics(conn)
-        logging.info(f"{len(df)} topic rows loaded.")
+        logger.info(f"{len(df)} topic rows loaded.")
 
         bias_df = compute_bias(df)
-        logging.info(f"{len(bias_df)} bias rows computed.")
+        logger.info(f"{len(bias_df)} bias rows computed.")
 
         save_bias(conn, bias_df)
-        logging.info("Bias analysis COMPLETE.")
+        logger.info("Bias analysis COMPLETE.")
     finally:
         conn.close()
 

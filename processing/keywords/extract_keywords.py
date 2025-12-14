@@ -1,5 +1,5 @@
 import os
-import logging
+from core.logging import get_logger
 from collections import Counter, defaultdict
 
 import psycopg2
@@ -13,12 +13,7 @@ from core.db_types import PGConnection, PGCursor
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
+logger = get_logger(__name__)
 nlp = spacy.load("fr_core_news_sm")
 STOPWORDS = set(nlp.Defaults.stop_words)
 
@@ -117,7 +112,7 @@ def compute_keywords_daily() -> None:
         groups = fetch_lemmas_by_day(cur)
         done_dates = already_computed_dates(cur)
 
-        logging.info(f"{len(groups)} groupes (date, source, media_type) trouvés.")
+        logger.info(f"{len(groups)} groupes (date, source, media_type) trouvés.")
         rows_to_insert = []
 
         per_date_media = defaultdict(Counter)  # (date, media_type) -> Counter
@@ -162,11 +157,11 @@ def compute_keywords_daily() -> None:
                 )
 
         if not rows_to_insert:
-            logging.info("Aucun nouveau mot-clé à insérer.")
+            logger.info("Aucun nouveau mot-clé à insérer.")
             conn.rollback()
             return
 
-        logging.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily...")
+        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily...")
 
         execute_values(
             cur,
@@ -182,11 +177,11 @@ def compute_keywords_daily() -> None:
         )
 
         conn.commit()
-        logging.info("keywords_daily mis à jour.")
+        logger.info("keywords_daily mis à jour.")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur extraction keywords : {e}")
+        logger.error(f"Erreur extraction keywords : {e}")
         raise
     finally:
         cur.close()

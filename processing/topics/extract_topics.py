@@ -1,5 +1,5 @@
 import os
-import logging
+from core.logging import get_logger
 from collections import defaultdict, Counter
 
 import psycopg2
@@ -11,13 +11,7 @@ from sklearn.decomposition import NMF
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
-
+logger = get_logger(__name__)
 import spacy
 from spacy.lang.fr.stop_words import STOP_WORDS as SPACY_STOP
 from nltk.corpus import stopwords
@@ -174,13 +168,13 @@ def compute_topics_daily() -> None:
         docs_by_date = fetch_tv_docs_by_day(cur)
         done_dates = already_computed_dates(cur)
 
-        logging.info(f"{len(docs_by_date)} dates avec docs TV.")
+        logger.info(f"{len(docs_by_date)} dates avec docs TV.")
 
         rows_to_insert = []
 
         for date, articles in docs_by_date.items():
             if date in done_dates:
-                logging.info(f"[{date}] déjà traitée, on saute.")
+                logger.info(f"[{date}] déjà traitée, on saute.")
                 continue
 
             # articles = liste de (article_id, source, texte)
@@ -189,15 +183,15 @@ def compute_topics_daily() -> None:
             docs = [txt for (a_id, src, txt) in articles]
 
             if len(docs) < 3:
-                logging.info(f"[{date}] Trop peu de docs ({len(docs)}), on ignore.")
+                logger.info(f"[{date}] Trop peu de docs ({len(docs)}), on ignore.")
                 continue
 
-            logging.info(f"[{date}] {len(docs)} docs -> topic modeling...")
+            logger.info(f"[{date}] {len(docs)} docs -> topic modeling...")
 
             topics_info, doc_topic_ids = extract_topics_for_date(date, docs)
 
             if not topics_info:
-                logging.info(f"[{date}] aucun topic détecté.")
+                logger.info(f"[{date}] aucun topic détecté.")
                 continue
 
             # comptage global par topic
@@ -246,11 +240,11 @@ def compute_topics_daily() -> None:
                     ))
 
         if not rows_to_insert:
-            logging.info("Aucun topic à insérer.")
+            logger.info("Aucun topic à insérer.")
             conn.rollback()
             return
 
-        logging.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily...")
+        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily...")
 
         execute_values(
             cur,
@@ -268,11 +262,11 @@ def compute_topics_daily() -> None:
         )
 
         conn.commit()
-        logging.info("topics_daily mis à jour.")
+        logger.info("topics_daily mis à jour.")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Erreur topics_daily : {e}")
+        logger.error(f"Erreur topics_daily : {e}")
         raise
     finally:
         cur.close()

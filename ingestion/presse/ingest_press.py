@@ -1,7 +1,7 @@
 # ingestion/presse/ingest_press.py
 
 import os
-import logging
+from core.logging import get_logger
 import time
 from datetime import datetime
 from pathlib import Path
@@ -23,10 +23,8 @@ from core.schemas import RSSArticle
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = get_logger(__name__)
+
 
 # Résolution du chemin du fichier YAML (indépendant de Windows/Linux)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -147,7 +145,7 @@ def ingest_press() -> None:
                 feeds = source_cfg.get("feeds", [])
 
                 if not isinstance(feeds, list):
-                    logging.warning("Section 'feeds' invalide pour %s, ignorée.", source_key)
+                    logger.warning("Section 'feeds' invalide pour %s, ignorée.", source_key)
                     continue
 
                 for feed in feeds:
@@ -155,18 +153,18 @@ def ingest_press() -> None:
                     feed_url = feed.get("url")
 
                     if not feed_url:
-                        logging.warning(
+                        logger.warning(
                             "Flux sans URL pour %s / %s, ignoré.",
                             source_key, feed_name
                         )
                         continue
 
-                    logging.info("Lecture flux presse %s (%s) - %s", label, feed_name, feed_url)
+                    logger.info("Lecture flux presse %s (%s) - %s", label, feed_name, feed_url)
 
                     parsed = feedparser.parse(feed_url)
 
                     if parsed.bozo:
-                        logging.warning(
+                        logger.warning(
                             "Flux mal formé ou erreur réseau pour %s : %s",
                             feed_url,
                             getattr(parsed, "bozo_exception", None),
@@ -189,7 +187,7 @@ def ingest_press() -> None:
 
                         #Aucun insert DB sans URL valide (RSSArticle.url est obligatoire)
                         if not article_url:
-                            logging.warning(
+                            logger.warning(
                                 "Entrée presse ignorée (url manquante) source=%s feed=%s title=%s",
                                 source_key, feed_name, title[:120]
                             )
@@ -209,7 +207,7 @@ def ingest_press() -> None:
                         try:
                             article = RSSArticle(**raw_data)
                         except Exception as e:
-                            logging.warning("Invalid press article skipped (url=%s): %s", article_url, e)
+                            logger.warning("Invalid press article skipped (url=%s): %s", article_url, e)
                             continue
 
                         #dédoublonnage par URL si disponible
@@ -250,11 +248,11 @@ def ingest_press() -> None:
                         total_inserted += 1
 
         conn.commit()
-        logging.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted)
+        logger.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted)
 
     except Exception as e:
         conn.rollback()
-        logging.error("Erreur durant l'ingestion presse : %s", e)
+        logger.error("Erreur durant l'ingestion presse : %s", e)
         raise
 
     finally:
