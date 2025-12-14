@@ -1,10 +1,13 @@
 import os
 import logging
+from __future__ import annotations
+from typing import Any, Optional
 import psycopg2
 import pandas as pd
 from psycopg2.extras import execute_values
 from datetime import timedelta
 from dotenv import load_dotenv
+from core.db_types import PGConnection
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [KW-LIFETIME] %(message)s")
@@ -15,7 +18,7 @@ GAP_THRESHOLD = 2   # topic survives if gap <= 2 days
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
-def load_keywords(conn):
+def load_keywords(conn: PGConnection) -> pd.DataFrame:
     sql = """
         SELECT date, word, SUM(count) AS freq
         FROM keywords_daily
@@ -25,7 +28,9 @@ def load_keywords(conn):
     """
     return pd.read_sql(sql, conn)
 
-def compute_lifetime(df):
+KeywordLifetimeRow = tuple[str, Any, Any, int, int]
+
+def compute_lifetime(df: pd.DataFrame) -> list[KeywordLifetimeRow]:
     df["date"] = pd.to_datetime(df["date"])
 
     lifetimes = []
@@ -74,7 +79,7 @@ def compute_lifetime(df):
 
     return lifetimes
 
-def save(conn, rows):
+def save(conn: PGConnection, rows: list[KeywordLifetimeRow]) -> None:
     sql = """
         CREATE TABLE IF NOT EXISTS keyword_lifetime (
             word TEXT,
@@ -94,7 +99,7 @@ def save(conn, rows):
         )
     conn.commit()
 
-def main():
+def main() -> None:
     conn = get_conn()
     try:
         df = load_keywords(conn)

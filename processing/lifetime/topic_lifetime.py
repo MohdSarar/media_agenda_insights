@@ -6,16 +6,20 @@ from psycopg2.extras import execute_values
 from datetime import timedelta
 from dotenv import load_dotenv
 
+from __future__ import annotations
+from typing import Any, Optional
+from core.db_types import PGConnection
+
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [TOPIC-LIFETIME] %(message)s")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 GAP_THRESHOLD = 2
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DATABASE_URL)
 
-def load_topics(conn):
+def load_topics(conn: PGConnection) -> pd.DataFrame:
     sql = """
         SELECT date, topic_id, topic_label, SUM(articles_count) AS freq
         FROM topics_daily
@@ -25,7 +29,11 @@ def load_topics(conn):
     """
     return pd.read_sql(sql, conn)
 
-def compute_lifetime(df):
+TopicLifetimeRow = tuple[int, str, Any, Any, Any, int]
+# (topic_id, topic_label, first_seen_date, last_seen_date, peak_date, total_mentions)
+
+
+def compute_lifetime(df: pd.DataFrame) -> list[TopicLifetimeRow]:
     df["date"] = pd.to_datetime(df["date"])
 
     episodes = []
@@ -84,7 +92,7 @@ def compute_lifetime(df):
 
     return episodes
 
-def save(conn, rows):
+def save(conn: PGConnection, rows: list[TopicLifetimeRow]) -> None:
     sql = """
         INSERT INTO topic_lifetime
         (topic_id, topic_label, first_seen_date, last_seen_date, peak_date, total_mentions)
@@ -95,7 +103,7 @@ def save(conn, rows):
         execute_values(cur, sql, rows)
     conn.commit()
 
-def main():
+def main() -> None:
     conn = get_conn()
     try:
         df = load_topics(conn)

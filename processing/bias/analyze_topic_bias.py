@@ -4,6 +4,7 @@ import psycopg2
 import pandas as pd
 from psycopg2.extras import execute_values
 from dotenv import load_dotenv
+from core.db_types import PGConnection
 
 load_dotenv()
 
@@ -14,10 +15,10 @@ DATABASE_URL = os.getenv(
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [BIAS] %(message)s")
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DATABASE_URL)
 
-def load_topics(conn):
+def load_topics(conn: PGConnection) -> pd.DataFrame:
     sql = """
         SELECT date, source, topic_id, topic_label, articles_count
         FROM topics_daily
@@ -26,7 +27,7 @@ def load_topics(conn):
     """
     return pd.read_sql(sql, conn)
 
-def compute_bias(df):
+def compute_bias(df: pd.DataFrame) -> pd.DataFrame:
     """
     share = count_source / total_count
     expected_share = 1 / number_of_sources
@@ -57,7 +58,7 @@ def compute_bias(df):
 
     return out
 
-def save_bias(conn, df):
+def save_bias(conn: PGConnection, df: pd.DataFrame) -> None:
     if df.empty:
         logging.info("No bias results to save.")
         return
@@ -79,7 +80,7 @@ def save_bias(conn, df):
         execute_values(cur, sql, rows)
     conn.commit()
 
-def main():
+def main() -> None:
     logging.info("Loading topic data...")
     conn = get_conn()
     try:

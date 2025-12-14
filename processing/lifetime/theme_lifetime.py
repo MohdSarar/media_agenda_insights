@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import os
 import logging
+from typing import Any, Optional
 import psycopg2
 import pandas as pd
 from psycopg2.extras import execute_values
 from datetime import timedelta
 from dotenv import load_dotenv
+from core.db_types import PGConnection
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [THEME-LIFETIME] %(message)s")
@@ -12,10 +16,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [THEME-LIFETIME] %(m
 DATABASE_URL = os.getenv("DATABASE_URL")
 GAP_THRESHOLD = 2
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DATABASE_URL)
 
-def load_themes(conn):
+def load_themes(conn: PGConnection) -> pd.DataFrame:
     sql = """
         SELECT date, topic_label, SUM(articles_count) AS freq
         FROM topics_daily
@@ -25,7 +29,11 @@ def load_themes(conn):
     """
     return pd.read_sql(sql, conn)
 
-def compute_lifetime(df):
+ThemeLifetimeRow = tuple[str, Any, Any, Any, int]
+# (theme_label, start_date, end_date, peak_date, total_mentions)
+
+
+def compute_lifetime(df: pd.DataFrame) -> list[ThemeLifetimeRow]:
     df["date"] = pd.to_datetime(df["date"])
     episodes = []
 
@@ -79,7 +87,7 @@ def compute_lifetime(df):
 
     return episodes
 
-def save(conn, rows):
+def save(conn: PGConnection, rows: list[ThemeLifetimeRow]) -> None:
     sql = """
         CREATE TABLE IF NOT EXISTS theme_lifetime (
             theme TEXT,
@@ -99,7 +107,7 @@ def save(conn, rows):
         )
     conn.commit()
 
-def main():
+def main() -> None:
     conn = get_conn()
     try:
         df = load_themes(conn)

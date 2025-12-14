@@ -5,6 +5,8 @@ import pandas as pd
 from psycopg2.extras import execute_values
 from dotenv import load_dotenv
 
+from core.db_types import PGConnection
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SPIKES] %(message)s")
@@ -14,10 +16,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 BASELINE_WINDOW = 3   # ← YOUR CHOSEN BASELINE
 Z_THRESHOLD = 2.0     # typical anomaly threshold
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DATABASE_URL)
 
-def load_topic_totals(conn):
+def load_topic_totals(conn: PGConnection) -> pd.DataFrame:
     sql = """
         SELECT date, topic_id, topic_label,
                SUM(articles_count) AS total_articles
@@ -28,7 +30,7 @@ def load_topic_totals(conn):
     """
     return pd.read_sql(sql, conn)
 
-def compute_spikes(df):
+def compute_spikes(df: pd.DataFrame) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values(["topic_id", "date"])
 
@@ -58,7 +60,7 @@ def compute_spikes(df):
 
     return pd.concat(results)
 
-def save_spikes(conn, df):
+def save_spikes(conn: PGConnection, df: pd.DataFrame) -> None:
     sql = """
         INSERT INTO spikes
         (date, topic_id, source, spike_score, baseline_window, details)
@@ -76,7 +78,7 @@ def save_spikes(conn, df):
         execute_values(cur, sql, rows)
     conn.commit()
 
-def main():
+def main() -> None:
     logging.info("Loading topic totals...")
     conn = get_conn()
 
