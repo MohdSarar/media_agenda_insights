@@ -14,6 +14,9 @@ fi
 
 echo "Utilisation de: $PYTHON"
 
+# Always run from project root (script directory)
+cd "$(dirname "$0")"
+
 # 1. Création / activation de l'environnement virtuel
 echo "=== Création / activation de l'environnement virtuel .venv ==="
 
@@ -59,74 +62,76 @@ except Exception:
 EOF
 
 # ------------------------------------------------------------
-# Helper: run script if exists
+# Helper: run module if corresponding file exists
 # ------------------------------------------------------------
-run_if_exists () {
-  local f="$1"
-  local label="$2"
-  if [ -f "$f" ]; then
+run_module_if_exists () {
+  local file_path="$1"
+  local module_name="$2"
+  local label="$3"
+
+  if [ -f "$file_path" ]; then
     echo "=== $label ==="
-    $PYTHON "$f"
+    $PYTHON -m "$module_name"
   else
-    echo "⚠️ $f introuvable, étape ignorée."
+    echo "⚠️ $file_path introuvable, étape ignorée."
   fi
 }
 
 # ------------------------------------------------------------
-# 4. Exécution du pipeline
+# 4. Exécution du pipeline (MODULAR)
 # ------------------------------------------------------------
 
 # 4.1 Ingestion TV (RSS)
-run_if_exists "ingestion/tv/ingest_tv.py" "Étape 1 : Ingestion TV RSS"
+run_module_if_exists "ingestion/tv/ingest_tv.py" "ingestion.tv.ingest_tv" "Étape 1 : Ingestion TV RSS"
 
 # 4.2 Ingestion Presse (RSS)
-run_if_exists "ingestion/presse/ingest_press.py" "Étape 2 : Ingestion Presse RSS"
+run_module_if_exists "ingestion/presse/ingest_press.py" "ingestion.presse.ingest_press" "Étape 2 : Ingestion Presse RSS"
 
 # 4.2bis Ingestion France24 (isolée)
-run_if_exists "ingestion/tv/ingest_france24.py" "Étape 2bis : Ingestion France24 (isolée)"
+run_module_if_exists "ingestion/tv/ingest_france24.py" "ingestion.tv.ingest_france24" "Étape 2bis : Ingestion France24 (isolée)"
 
 # 4.2ter Ingestion Social (Circle 1)
-run_if_exists "ingestion/social/ingest_reddit.py"  "Étape 2ter : Ingestion Social - Reddit"
-run_if_exists "ingestion/social/ingest_mastodon.py" "Étape 2ter : Ingestion Social - Mastodon"
-run_if_exists "ingestion/social/ingest_youtube.py"  "Étape 2ter : Ingestion Social - YouTube"
-run_if_exists "ingestion/social/ingest_tiktok.py"   "Étape 2ter : Ingestion Social - TikTok"
+run_module_if_exists "ingestion/social/ingest_reddit.py"   "ingestion.social.ingest_reddit"   "Étape 2ter : Ingestion Social - Reddit"
+run_module_if_exists "ingestion/social/ingest_mastodon.py" "ingestion.social.ingest_mastodon" "Étape 2ter : Ingestion Social - Mastodon"
+run_module_if_exists "ingestion/social/ingest_youtube.py"  "ingestion.social.ingest_youtube"  "Étape 2ter : Ingestion Social - YouTube"
+run_module_if_exists "ingestion/social/ingest_tiktok.py"   "ingestion.social.ingest_tiktok"   "Étape 2ter : Ingestion Social - TikTok"
 
 # 4.3 NLP global
-run_if_exists "processing/nlp/process_articles.py" "Étape 3 : NLP global (articles)"
+run_module_if_exists "processing/nlp/process_articles.py" "processing.nlp.process_articles" "Étape 3 : NLP global (articles)"
 
 # 4.3bis NLP France24
-run_if_exists "processing/nlp/process_france24_articles.py" "Étape 3bis : NLP France24 (isolée)"
+run_module_if_exists "processing/nlp/process_france24_articles.py" "processing.nlp.process_france24_articles" "Étape 3bis : NLP France24 (isolée)"
 
 # 4.3ter NLP Social
-run_if_exists "processing/nlp/process_social_posts.py" "Étape 3ter : NLP Social (posts)"
+run_module_if_exists "processing/nlp/process_social_posts.py" "processing.nlp.process_social_posts" "Étape 3ter : NLP Social (posts)"
 
 # 4.4 Keywords global
-run_if_exists "processing/keywords/extract_keywords.py" "Étape 4 : Keywords global"
+run_module_if_exists "processing/keywords/extract_keywords.py" "processing.keywords.extract_keywords" "Étape 4 : Keywords global"
 
 # 4.4bis Keywords France24
-run_if_exists "processing/keywords/extract_france24_keywords.py" "Étape 4bis : Keywords France24"
+run_module_if_exists "processing/keywords/extract_france24_keywords.py" "processing.keywords.extract_france24_keywords" "Étape 4bis : Keywords France24"
 
 # 4.4ter Keywords Social
-run_if_exists "processing/keywords/extract_social_keywords.py" "Étape 4ter : Keywords Social"
+run_module_if_exists "processing/keywords/extract_social_keywords.py" "processing.keywords.extract_social_keywords" "Étape 4ter : Keywords Social"
 
 # 4.5 Topics global
-run_if_exists "processing/topics/extract_topics.py" "Étape 5 : Topics global"
+run_module_if_exists "processing/topics/extract_topics.py" "processing.topics.extract_topics" "Étape 5 : Topics global"
 
 # 4.5bis Topics France24
-run_if_exists "processing/topics/extract_france24_topics.py" "Étape 5bis : Topics France24"
+run_module_if_exists "processing/topics/extract_france24_topics.py" "processing.topics.extract_france24_topics" "Étape 5bis : Topics France24"
 
 # 4.5ter Topics Social
-run_if_exists "processing/topics/extract_social_topics.py" "Étape 5ter : Topics Social"
+run_module_if_exists "processing/topics/extract_social_topics.py" "processing.topics.extract_social_topics" "Étape 5ter : Topics Social"
 
-# 4.6 Analyse des biais (nom réel dans ton projet)
-run_if_exists "processing/bias/analyze_topic_bias.py" "Analyse des biais médiatiques (topic-level)"
+# 4.6 Analyse des biais
+run_module_if_exists "processing/bias/analyze_topic_bias.py" "processing.bias.analyze_topic_bias" "Analyse des biais médiatiques (topic-level)"
 
-# 4.7 Spikes (nom réel dans ton projet)
-run_if_exists "processing/spikes/detect_topic_spikes.py" "Détection des spikes (topic-level)"
+# 4.7 Spikes
+run_module_if_exists "processing/spikes/detect_topic_spikes.py" "processing.spikes.detect_topic_spikes" "Détection des spikes (topic-level)"
 
-# 4.8 Lifetime (noms réels dans ton projet)
-run_if_exists "processing/lifetime/keyword_lifetime.py" "Lifetime keywords"
-run_if_exists "processing/lifetime/topic_lifetime.py"   "Lifetime topics"
-run_if_exists "processing/lifetime/theme_lifetime.py"   "Lifetime themes"
+# 4.8 Lifetime
+run_module_if_exists "processing/lifetime/keyword_lifetime.py" "processing.lifetime.keyword_lifetime" "Lifetime keywords"
+run_module_if_exists "processing/lifetime/topic_lifetime.py"   "processing.lifetime.topic_lifetime"   "Lifetime topics"
+run_module_if_exists "processing/lifetime/theme_lifetime.py"   "processing.lifetime.theme_lifetime"   "Lifetime themes"
 
 echo "=== Pipeline terminé avec succès ✅ ==="

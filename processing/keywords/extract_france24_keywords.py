@@ -10,6 +10,11 @@ from dotenv import load_dotenv
 
 from nltk.corpus import stopwords
 
+
+from typing import Any, Iterable
+import datetime as dt
+from core.db_types import PGConnection, PGCursor
+
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 
@@ -89,11 +94,13 @@ LANG_STOPWORDS = {
 DEFAULT_STOPWORDS = STOP_FR
 
 
-def get_conn():
+def get_conn()-> PGConnection:
     return psycopg2.connect(DB_URL)
 
 
-def fetch_lemmas_by_group(cur):
+def fetch_lemmas_by_group(
+    cur: PGCursor,
+) -> list[tuple[dt.date, str, str, list[str]]]:
     """
     Retourne :
       (date, source, lang) -> [liste de listes de lemmes]
@@ -121,7 +128,7 @@ def fetch_lemmas_by_group(cur):
     return groups
 
 
-def already_computed_keys(cur):
+def already_computed_keys(cur: PGCursor) -> set[tuple[dt.date, str, str]]:
     """
     On considère qu'un triplet (date, source, lang) déjà présent
     n'a pas besoin d'être recalculé.
@@ -133,7 +140,10 @@ def already_computed_keys(cur):
     return {(r[0], r[1], r[2]) for r in cur.fetchall()}
 
 
-def build_word_counts(lemmas_lists, lang_code: str):
+def build_word_counts(
+    lemmas_lists: Iterable[list[str]],
+    lang_code: str,
+) -> dict[str, int]:
     """
     Construit un Counter de mots filtrés par stopwords en fonction de la langue.
     """
@@ -164,7 +174,7 @@ def build_word_counts(lemmas_lists, lang_code: str):
     return counter
 
 
-def compute_france24_keywords_daily():
+def compute_france24_keywords_daily() -> None:
     conn = get_conn()
     conn.autocommit = False
     cur = conn.cursor()

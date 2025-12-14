@@ -14,7 +14,8 @@ from sklearn.decomposition import NMF
 
 import nltk
 from nltk.corpus import stopwords as nltk_stopwords
-
+from typing import Any
+from core.db_types import PGConnection
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -31,7 +32,7 @@ RE_TOKEN_OK = re.compile(r"^[A-Za-zÀ-ÿ\u0600-\u06FF][A-Za-zÀ-ÿ\u0600-\u06FF0
 RE_DIGITS = re.compile(r"^\d+$")
 
 
-def connect_db():
+def connect_db() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL introuvable (.env)")
     return psycopg2.connect(DB_URL)
@@ -156,7 +157,7 @@ def topics_n_for_lang(lang: str) -> int:
     return int(os.getenv(key, str(DEFAULT_N_TOPICS)))
 
 
-def fetch_docs(conn, start_date: dt.date, end_date: dt.date):
+def fetch_docs(conn: PGConnection, start_date: dt.date, end_date: dt.date) -> list[tuple[dt.date, str, str, str]]:
     sql = """
         SELECT
           (r.published_at AT TIME ZONE 'UTC')::date AS d,
@@ -174,7 +175,7 @@ def fetch_docs(conn, start_date: dt.date, end_date: dt.date):
         return cur.fetchall()
 
 
-def build_vectorizer(lang: str, stopset: set):
+def build_vectorizer(lang: str, stopset: set[str]) -> TfidfVectorizer:
     def tok(text: str):
         if not text:
             return []
@@ -199,7 +200,7 @@ def build_vectorizer(lang: str, stopset: set):
     )
 
 
-def main():
+def main() -> None: 
     ensure_nltk()
 
     today = dt.date.today()

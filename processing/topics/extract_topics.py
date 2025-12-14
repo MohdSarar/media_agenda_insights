@@ -22,6 +22,9 @@ import spacy
 from spacy.lang.fr.stop_words import STOP_WORDS as SPACY_STOP
 from nltk.corpus import stopwords
 
+from typing import Any, Iterable, Sequence
+import datetime as dt
+from core.db_types import PGConnection, PGCursor
 
 
 NLTK_STOP = set(stopwords.words("french"))
@@ -46,11 +49,11 @@ CUSTOM_STOPWORDS = {
 USELESS_WORDS = SPACY_STOP | NLTK_STOP | CUSTOM_STOPWORDS
 
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DB_URL)
 
 
-def clean_lemmas(lemmas):
+def clean_lemmas(lemmas: Sequence[str]) -> list[str]:
     cleaned = []
     for l in lemmas:
         if not l:
@@ -66,7 +69,9 @@ def clean_lemmas(lemmas):
     return cleaned
 
 
-def fetch_tv_docs_by_day(cur):
+def fetch_tv_docs_by_day(
+    cur: PGCursor,
+) -> dict[dt.date, list[tuple[int, str]]]:
     """
     Retourne date -> liste de (article_id, source, texte_doc)
     où texte_doc = lemmes nettoyés joinés par espace.
@@ -100,7 +105,7 @@ def fetch_tv_docs_by_day(cur):
 
 
 
-def already_computed_dates(cur):
+def already_computed_dates(cur: PGCursor) -> set[dt.date]:
     cur.execute("""
         SELECT DISTINCT date
         FROM topics_daily
@@ -109,7 +114,12 @@ def already_computed_dates(cur):
     return {row[0] for row in cur.fetchall()}
 
 
-def extract_topics_for_date(date, docs, n_topics=10, n_words=8):
+def extract_topics_for_date(
+    date: dt.date,
+    docs: Sequence[tuple[int, str]],
+    n_topics: int = 10,
+    n_words: int = 8,
+) -> list[dict[str, Any]]:
     """
     docs : liste de textes (1 par article)
     Retourne :
@@ -155,7 +165,7 @@ def extract_topics_for_date(date, docs, n_topics=10, n_words=8):
     return topics_info, doc_topic_ids
 
 
-def compute_topics_daily():
+def compute_topics_daily() -> None:
     conn = get_conn()
     conn.autocommit = False
     cur = conn.cursor()

@@ -13,6 +13,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 # NLTK stopwords
 import nltk
 from nltk.corpus import stopwords as nltk_stopwords
+from typing import Any, Iterable, Sequence
+from core.db_types import PGConnection
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -30,7 +32,7 @@ RE_TOKEN_OK = re.compile(r"^[A-Za-zÀ-ÿ\u0600-\u06FF][A-Za-zÀ-ÿ\u0600-\u06FF0
 RE_DIGITS = re.compile(r"^\d+$")
 
 
-def connect_db():
+def connect_db() -> PGConnection: 
     if not DB_URL:
         raise RuntimeError("DATABASE_URL introuvable (.env)")
     return psycopg2.connect(DB_URL)
@@ -192,7 +194,11 @@ def strict_reject(token: str, stopset: set) -> bool:
     return False
 
 
-def fetch_docs(conn, start_date: dt.date, end_date: dt.date):
+def fetch_docs(
+    conn: PGConnection,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> list[tuple[dt.date, str, str, str]]:
     """
     On récupère le texte propre + lang + la date via raw.published_at.
     """
@@ -213,7 +219,7 @@ def fetch_docs(conn, start_date: dt.date, end_date: dt.date):
         return cur.fetchall()
 
 
-def build_vectorizer(lang: str, stopset: set):
+def build_vectorizer(lang: str, stopset: set[str]) -> TfidfVectorizer:
     def tok(text: str):
         if not text:
             return []
@@ -238,7 +244,10 @@ def build_vectorizer(lang: str, stopset: set):
     )
 
 
-def upsert_keywords(conn, rows):
+def upsert_keywords(
+    conn: PGConnection,
+    rows: Sequence[tuple[dt.date, str, str, str, float]],
+) -> None:
     sql = """
       INSERT INTO social_keywords_daily (date, platform, source, lang, keyword, score, n_docs)
       VALUES %s
@@ -251,7 +260,7 @@ def upsert_keywords(conn, rows):
         execute_values(cur, sql, rows, page_size=500)
 
 
-def main():
+def main() -> None:
     ensure_nltk()
 
     today = dt.date.today()

@@ -14,7 +14,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.cluster import MiniBatchKMeans
 import re
 from collections import Counter
-
+from core.db_types import PGConnection
 
 
 load_dotenv()
@@ -28,7 +28,7 @@ logging.basicConfig(
 
 # ---------------- Connexion DB ----------------
 
-def get_conn():
+def get_conn() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL manquant dans l'environnement")
     return psycopg2.connect(DB_URL)
@@ -36,7 +36,7 @@ def get_conn():
 
 # ---------------- Chargement des articles ----------------
 
-def fetch_articles_for_narratives(conn) -> pd.DataFrame:
+def fetch_articles_for_narratives(conn: PGConnection) -> pd.DataFrame:
     """
     Récupère les articles (titre + résumé + lemmas) pour construire les narratifs.
     On joint articles_raw et articles_clean.
@@ -282,7 +282,7 @@ def build_cluster_summaries(df: pd.DataFrame, labels: np.ndarray, top_k: int = 1
 
 # ---------------- Écriture en base ----------------
 
-def reset_narratives_tables(conn):
+def reset_narratives_tables(conn: PGConnection) -> None:
     with conn.cursor() as cur:
         cur.execute("TRUNCATE TABLE narratives_assignments CASCADE;")
         cur.execute("TRUNCATE TABLE narratives_clusters CASCADE;")
@@ -290,7 +290,7 @@ def reset_narratives_tables(conn):
     logging.info("Tables narratives_* vidées.")
 
 
-def insert_clusters(conn, clusters_df: pd.DataFrame):
+def insert_clusters(conn: PGConnection, clusters_df: pd.DataFrame) -> None:
     records = [
         (row["cluster_id"], row["label"], row["top_keywords"], row["size"])
         for _, row in clusters_df.iterrows()
@@ -307,7 +307,7 @@ def insert_clusters(conn, clusters_df: pd.DataFrame):
     logging.info(f"{len(records)} lignes insérées dans narratives_clusters.")
 
 
-def insert_assignments(conn, df_with_clusters: pd.DataFrame):
+def insert_assignments(conn: PGConnection, df_with_clusters: pd.DataFrame) -> None:
     records = [
         (int(row["article_id"]), int(row["cluster_id"]), None)
         for _, row in df_with_clusters.iterrows()
@@ -326,7 +326,7 @@ def insert_assignments(conn, df_with_clusters: pd.DataFrame):
 
 # ---------------- Main pipeline ----------------
 
-def main():
+def main() -> None:
     conn = get_conn()
 
     try:

@@ -11,6 +11,8 @@ import spacy
 import re
 from bs4 import BeautifulSoup
 
+from typing import Any, Optional
+from core.db_types import PGConnection, PGCursor, JsonDict, JsonList
 
 load_dotenv()
 
@@ -36,13 +38,15 @@ stanza_nlp = stanza.Pipeline(
 spacy_nlp = spacy.load("fr_core_news_sm")
 
 
-def get_db_connection():
+def get_db_connection() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL manquant dans l'environnement")
     return psycopg2.connect(DB_URL)
 
 
-def fetch_unprocessed_articles(cur):
+def fetch_unprocessed_articles(
+        cur: PGCursor,
+    ) -> list[tuple[int, str, Optional[str]]]:
     """
     Récupère tous les articles qui n'ont pas encore de ligne associée
     dans articles_clean.
@@ -98,7 +102,10 @@ def clean_text(text: str) -> str:
     return text.replace("\n", " ").strip()
 
 
-def process_text_stanza_and_spacy(text: str):
+def process_text_stanza_and_spacy(
+        text: str,
+    ) -> tuple[list[str], list[str], list[JsonDict]]:
+        
     """
     Utilise Stanza pour tokens + lemmes
     et spaCy pour les entités nommées.
@@ -123,7 +130,14 @@ def process_text_stanza_and_spacy(text: str):
     return tokens, lemmas, ents
 
 
-def insert_clean(cur, article_id, cleaned, tokens, lemmas, ents):
+def insert_clean(
+    cur: PGCursor,
+    article_id: int,
+    cleaned: str,
+    tokens: list[str],
+    lemmas: list[str],
+    ents: list[JsonDict],
+) -> None:
     cur.execute("""
         INSERT INTO articles_clean (article_id, cleaned_text, tokens, lemmas, entities)
         VALUES (%s, %s, %s, %s, %s)
@@ -137,7 +151,7 @@ def insert_clean(cur, article_id, cleaned, tokens, lemmas, ents):
     ))
 
 
-def process_articles():
+def process_articles()  -> None:
     conn = get_db_connection()
     conn.autocommit = False
     cur = conn.cursor()

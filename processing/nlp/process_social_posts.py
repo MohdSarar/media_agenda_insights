@@ -8,6 +8,11 @@ import psycopg2
 from psycopg2.extras import Json
 from dotenv import load_dotenv
 
+from typing import Any, Dict, List, Tuple, Optional
+from spacy.language import Language as SpacyLanguage
+import stanza
+from core.db_types import PGConnection
+
 # Optional libs (fallback if missing)
 try:
     from langdetect import detect as ld_detect
@@ -41,7 +46,7 @@ RE_HASHTAG = re.compile(r"#([A-Za-z0-9_À-ÿ\u0600-\u06FF]+)")
 MIN_CHARS_FOR_LANG = 30
 
 
-def connect_db():
+def connect_db() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL introuvable. Vérifie ton .env")
     return psycopg2.connect(DB_URL)
@@ -123,7 +128,7 @@ def detect_lang(text: str) -> str:
     return "fr"
 
 
-def get_spacy_pipeline(lang: str):
+def get_spacy_pipeline(lang: str)  -> SpacyLanguage:
     """
     Load spaCy model lazily.
     You can set env vars:
@@ -153,7 +158,7 @@ def get_spacy_pipeline(lang: str):
 _STANZA_PIPELINES: Dict[str, Any] = {}
 
 
-def get_stanza_pipeline(lang: str):
+def get_stanza_pipeline(lang: str)  -> stanza.Pipeline: 
     """
     Stanza is mainly useful for Arabic here.
     You can enable it if you already use Stanza in your project.
@@ -216,7 +221,7 @@ def nlp_extract(lang: str, text: str) -> Tuple[List[str], List[str], List[Dict[s
     return toks, toks, []
 
 
-def fetch_unprocessed(conn, batch_size: int) -> List[Dict[str, Any]]:
+def fetch_unprocessed(conn: PGConnection, batch_size: int) -> List[Dict[str, Any]]:
     """
     Get rows from raw not yet in clean (idempotent).
     """
@@ -247,7 +252,7 @@ def fetch_unprocessed(conn, batch_size: int) -> List[Dict[str, Any]]:
     return out
 
 
-def upsert_clean(conn, rec: Dict[str, Any]):
+def upsert_clean(conn: PGConnection, rec: Dict[str, Any]) -> None:
     sql = """
         INSERT INTO social_posts_clean
           (platform, source, external_id, url, title, clean_text, lang, tokens, lemmas, entities, hashtags)
@@ -284,7 +289,7 @@ def upsert_clean(conn, rec: Dict[str, Any]):
         )
 
 
-def main():
+def main() -> None:
     conn = connect_db()
     total = 0
 

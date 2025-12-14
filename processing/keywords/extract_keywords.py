@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 import spacy
 from psycopg2.extras import execute_values
 
+from typing import Any, Iterable
+import datetime as dt
+from core.db_types import PGConnection, PGCursor
+
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 
@@ -44,11 +48,14 @@ CUSTOM_STOPWORDS = {
 
 USELESS_WORDS = SPACY_STOP | NLTK_STOP | CUSTOM_STOPWORDS
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DB_URL)
 
 
-def fetch_lemmas_by_day(cur):
+def fetch_lemmas_by_day(
+        cur: PGCursor,
+    ) -> list[tuple[dt.date, list[str]]]:
+
     """
     Retourne :
       (date, source, media_type) -> [liste de listes de lemmes]
@@ -74,12 +81,15 @@ def fetch_lemmas_by_day(cur):
     return groups
 
 
-def already_computed_dates(cur):
+def already_computed_dates(cur: PGCursor) -> set[dt.date]:
     cur.execute("SELECT DISTINCT date FROM keywords_daily;")
     return {row[0] for row in cur.fetchall()}
 
 
-def build_word_counts(lemmas_lists):
+def build_word_counts(
+    lemmas_lists: Iterable[list[str]],
+    ) -> dict[str, int]:
+
     counter = Counter()
     for lemmas in lemmas_lists:
         for lemma in lemmas:
@@ -98,7 +108,7 @@ def build_word_counts(lemmas_lists):
     return counter
 
 
-def compute_keywords_daily():
+def compute_keywords_daily() -> None:
     conn = get_conn()
     conn.autocommit = False
     cur = conn.cursor()

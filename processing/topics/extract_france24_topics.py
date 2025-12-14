@@ -13,6 +13,10 @@ from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import NMF
 
+from typing import Any, Sequence
+import datetime as dt
+from core.db_types import PGConnection, PGCursor
+
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
@@ -56,7 +60,7 @@ LANG_STOPWORDS = {"fr": STOP_FR, "en": STOP_EN, "es": STOP_ES, "ar": STOP_AR}
 DEFAULT_STOPWORDS = STOP_EN  # fallback
 
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DB_URL)
 
 
@@ -101,7 +105,9 @@ def preprocess_text(text: str, lang: str) -> str:
     return " ".join(clean)
 
 
-def fetch_docs_by_group(cur):
+def fetch_docs_by_group(
+    cur: PGCursor,
+) -> list[tuple[dt.date, str, str, list[str]]]:
     """
     Retourne:
       (date, source, lang) -> [docs pré-nettoyés]
@@ -133,7 +139,7 @@ def fetch_docs_by_group(cur):
     return groups
 
 
-def already_computed_keys(cur):
+def already_computed_keys(cur: PGCursor) -> set[tuple[dt.date, str, str]]:
     """
     On évite de recalculer un (date, source, lang) déjà présent.
     """
@@ -144,7 +150,11 @@ def already_computed_keys(cur):
     return {(r[0], r[1], r[2]) for r in cur.fetchall()}
 
 
-def extract_topics(docs, n_topics=10, n_words=8):
+def extract_topics(
+    docs: Sequence[str],
+    n_topics: int = 10,
+    n_words: int = 8,
+) -> list[dict[str, Any]]:
     """
     Topic modeling NMF sur TF-IDF.
     Retour:
@@ -194,7 +204,7 @@ def extract_topics(docs, n_topics=10, n_words=8):
     return topic_keywords, topic_counts
 
 
-def compute_france24_topics_daily():
+def compute_france24_topics_daily() -> None:
     conn = get_conn()
     conn.autocommit = False
     cur = conn.cursor()

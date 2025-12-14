@@ -10,6 +10,20 @@ import psycopg2
 from psycopg2.extras import Json
 from dotenv import load_dotenv
 
+
+from typing import Any, Mapping, Optional, TypedDict
+import datetime as dt
+from core.db_types import PGConnection, JsonDict
+
+class NormalizedRedditPost(TypedDict):
+    post_id: str
+    title: str
+    content: str
+    author: Optional[str]
+    url: str
+    published_at: Optional[dt.datetime]
+    raw: JsonDict
+
 # Chargement des variables d'environnement (.env)
 load_dotenv()
 
@@ -32,20 +46,20 @@ USER_AGENT = os.getenv(
 )
 
 
-def load_config(path: str) -> dict:
+def load_config(path: str) -> dict[str, Any]:
     if not os.path.exists(path):
         raise FileNotFoundError(f"Config introuvable: {path}")
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
-def connect_db():
+def connect_db() -> PGConnection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL introuvable. Vérifie ton .env")
     return psycopg2.connect(DB_URL)
 
 
-def reddit_fetch(subreddit: str, mode: str = "new", limit: int = 100) -> dict:
+def reddit_fetch(subreddit: str, mode: str = "new", limit: int = 100) -> JsonDict:
     mode = (mode or "new").strip().lower()
     if mode not in {"new", "hot", "top", "rising"}:
         mode = "new"
@@ -60,7 +74,7 @@ def reddit_fetch(subreddit: str, mode: str = "new", limit: int = 100) -> dict:
     return r.json()
 
 
-def normalize_post(child: dict) -> dict | None:
+def normalize_post(child: Mapping[str, Any]) -> Optional[NormalizedRedditPost]:
     """
     Transforme un post Reddit en ligne social_posts_raw.
     On reste sur signaux publics (title/selftext/url/author/date).
@@ -98,7 +112,12 @@ def normalize_post(child: dict) -> dict | None:
     }
 
 
-def insert_posts(conn, platform: str, source: str, posts: list[dict]) -> tuple[int, int]:
+def insert_posts(
+    conn: PGConnection,
+    platform: str,
+    source: str,
+    posts: list[NormalizedRedditPost],
+) -> tuple[int, int]:
     """
     Insère en DB avec idempotence.
     Retourne (inserted_count, skipped_count).
@@ -142,7 +161,7 @@ def insert_posts(conn, platform: str, source: str, posts: list[dict]) -> tuple[i
     return inserted, skipped
 
 
-def main():
+def main() -> None:
     cfg = load_config(SOCIAL_CFG_PATH)
     reddit_cfg = (cfg or {}).get("reddit") or {}
 

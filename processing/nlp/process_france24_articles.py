@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 import spacy
 from langdetect import detect, LangDetectException
 
+from typing import Tuple
+from core.db_types import PGConnection
+
+
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 
@@ -26,7 +30,7 @@ NLP_FR = spacy.load("fr_core_news_sm")
 # Utils
 # -----------------------------
 
-def get_conn():
+def get_conn() -> PGConnection:
     return psycopg2.connect(DB_URL)
 
 
@@ -63,7 +67,7 @@ def detect_language(text: str, source: str) -> str:
         return "fr"
 
 
-def nlp_process(text: str, lang: str):
+def nlp_process(text: str, lang: str)  -> tuple[list[str], list[str]]:
     """
     NLP minimal propre (token / lemma)
     Pour FR : spaCy
@@ -89,7 +93,7 @@ def nlp_process(text: str, lang: str):
 # Main
 # -----------------------------
 
-def process_france24_articles():
+def process_france24_articles()  -> None:
     conn = get_conn()
     cur = conn.cursor()
 
