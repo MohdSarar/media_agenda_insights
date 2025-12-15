@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 import re
 from core.logging import get_logger
@@ -31,11 +32,7 @@ RE_TOKEN_OK = re.compile(r"^[A-Za-zÀ-ÿ\u0600-\u06FF][A-Za-zÀ-ÿ\u0600-\u06FF0
 RE_DIGITS = re.compile(r"^\d+$")
 
 
-def connect_db() -> PGConnection: 
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL introuvable (.env)")
-    return psycopg2.connect(DB_URL)
-
+connect_db = get_conn
 
 def ensure_nltk():
     try:
@@ -266,8 +263,8 @@ def main() -> None:
     start_date = today - dt.timedelta(days=DAYS_BACK)
     end_date = today
 
-    conn = connect_db()
-    try:
+    with get_conn() as conn:
+    
         data = fetch_docs(conn, start_date, end_date)
         logger.info("Fetched %s docs (from %s to %s).", len(data), start_date, end_date)
 
@@ -310,8 +307,6 @@ def main() -> None:
         else:
             logger.info("No keyword rows to upsert.")
 
-    finally:
-        conn.close()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+from core.db import get_conn
 # processing/nlp/process_france24_articles.py
 
 import os
@@ -25,8 +26,6 @@ NLP_FR = spacy.load("fr_core_news_sm")
 # Utils
 # -----------------------------
 
-def get_conn() -> PGConnection:
-    return psycopg2.connect(DB_URL)
 
 
 def clean_text(text: str) -> str:
@@ -89,73 +88,72 @@ def nlp_process(text: str, lang: str)  -> tuple[list[str], list[str]]:
 # -----------------------------
 
 def process_france24_articles()  -> None:
-    conn = get_conn()
-    cur = conn.cursor()
+    with get_conn() as conn:
+        cur = conn.cursor()
 
-    try:
-        cur.execute("""
-            SELECT
-                ar.id,
-                ar.source,
-                COALESCE(ar.summary, '') || ' ' || ar.title AS text
-            FROM articles_raw_f24 ar
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM articles_clean_f24 ac
-                WHERE ac.article_id = ar.id
+        try:
+            cur.execute("""
+                SELECT
+                    ar.id,
+                    ar.source,
+                    COALESCE(ar.summary, '') || ' ' || ar.title AS text
+                FROM articles_raw_f24 ar
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM articles_clean_f24 ac
+                    WHERE ac.article_id = ar.id
+                )
+            """)
+
+            rows = cur.fetchall()
+            logger.info(f"{len(rows)} articles France 24 à traiter.")
+
+            if not rows:
+                return
+
+            to_insert = []
+
+            for article_id, source, raw_text in rows:
+                cleaned = clean_text(raw_text)
+                if not cleaned:
+                    continue
+
+                lang = detect_language(cleaned, source)
+                tokens, lemmas = nlp_process(cleaned, lang)
+
+                to_insert.append((
+                    article_id,
+                    cleaned,
+                    tokens,
+                    lemmas,
+                    lang
+                ))
+
+            if not to_insert:
+                logger.info("Aucun article NLP exploitable.")
+                return
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO articles_clean_f24
+                    (article_id, cleaned_text, tokens, lemmas, lang)
+                VALUES %s
+                ON CONFLICT (article_id) DO NOTHING
+                """,
+                to_insert
             )
-        """)
 
-        rows = cur.fetchall()
-        logger.info(f"{len(rows)} articles France 24 à traiter.")
+            conn.commit()
+            logger.info(f"{len(to_insert)} articles France 24 traités (NLP).")
 
-        if not rows:
-            return
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Erreur NLP France 24 : {e}")
+            raise
 
-        to_insert = []
-
-        for article_id, source, raw_text in rows:
-            cleaned = clean_text(raw_text)
-            if not cleaned:
-                continue
-
-            lang = detect_language(cleaned, source)
-            tokens, lemmas = nlp_process(cleaned, lang)
-
-            to_insert.append((
-                article_id,
-                cleaned,
-                tokens,
-                lemmas,
-                lang
-            ))
-
-        if not to_insert:
-            logger.info("Aucun article NLP exploitable.")
-            return
-
-        execute_values(
-            cur,
-            """
-            INSERT INTO articles_clean_f24
-                (article_id, cleaned_text, tokens, lemmas, lang)
-            VALUES %s
-            ON CONFLICT (article_id) DO NOTHING
-            """,
-            to_insert
-        )
-
-        conn.commit()
-        logger.info(f"{len(to_insert)} articles France 24 traités (NLP).")
-
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Erreur NLP France 24 : {e}")
-        raise
-
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
 
 
 if __name__ == "__main__":

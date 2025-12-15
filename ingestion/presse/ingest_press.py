@@ -1,3 +1,4 @@
+from core.db import get_conn
 # ingestion/presse/ingest_press.py
 
 import os
@@ -31,11 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = PROJECT_ROOT / "infra" / "config" / "feeds_press.yaml"
 
 
-def get_db_connection() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
-    return psycopg2.connect(DB_URL)
-
+get_db_connection = get_conn
 
 def load_press_feeds() -> Dict[str, Any]:
     """
@@ -127,136 +124,128 @@ def article_exists_without_date(
     )
     return cur.fetchone() is not None
 
+
 def ingest_press() -> None:
     """
     Ingestion des flux RSS de presse définis dans feeds_press.yaml
     vers la table articles_raw (media_type = 'press').
     """
     press_cfg = load_press_feeds()
-    conn = get_db_connection()
-    conn.autocommit = False
 
     total_inserted = 0
 
-    try:
-        with conn.cursor(cursor_factory=DictCursor) as cur:
-            for source_key, source_cfg in press_cfg.items():
-                label = source_cfg.get("label", source_key)
-                feeds = source_cfg.get("feeds", [])
+    with get_conn() as conn:
+        conn.autocommit = False
 
-                if not isinstance(feeds, list):
-                    logger.warning("Section 'feeds' invalide pour %s, ignorée.", source_key)
-                    continue
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cur:
+                for source_key, source_cfg in press_cfg.items():
+                    label = source_cfg.get("label", source_key)
+                    feeds = source_cfg.get("feeds", [])
 
-                for feed in feeds:
-                    feed_name = feed.get("name", "default")
-                    feed_url = feed.get("url")
-
-                    if not feed_url:
-                        logger.warning(
-                            "Flux sans URL pour %s / %s, ignoré.",
-                            source_key, feed_name
-                        )
+                    if not isinstance(feeds, list):
+                        logger.warning("Section 'feeds' invalide pour %s, ignorée.", source_key)
                         continue
 
-                    logger.info("Lecture flux presse %s (%s) - %s", label, feed_name, feed_url)
+                    for feed in feeds:
+                        feed_name = feed.get("name", "default")
+                        feed_url = feed.get("url")
 
-                    parsed = feedparser.parse(feed_url)
-
-                    if parsed.bozo:
-                        logger.warning(
-                            "Flux mal formé ou erreur réseau pour %s : %s",
-                            feed_url,
-                            getattr(parsed, "bozo_exception", None),
-                        )
-
-                    for entry in parsed.entries:
-                        title = (getattr(entry, "title", "") or "").strip()
-                        summary = (getattr(entry, "summary", "") or "").strip()
-                        article_url = getattr(entry, "link", None)
-
-                        if not title:
-                            # On ignore les entrées sans titre
-                            continue
-
-                        published_at = parse_published(entry)
-
-                        #ىىnormalisation minimale : published_at doit exister pour la validation
-                        if published_at is None:
-                            published_at = datetime.now(timezone.utc)
-
-                        #Aucun insert DB sans URL valide (RSSArticle.url est obligatoire)
-                        if not article_url:
+                        if not feed_url:
                             logger.warning(
-                                "Entrée presse ignorée (url manquante) source=%s feed=%s title=%s",
-                                source_key, feed_name, title[:120]
+                                "Flux sans URL pour %s / %s, ignoré.",
+                                source_key, feed_name
                             )
                             continue
 
-                        #validation Pydantic AVANT toute DB write
-                        raw_data = {
-                            "source": source_key,
-                            "category": feed_name,
-                            "title": title,
-                            "content": summary,
-                            "url": article_url,
-                            "published_at": published_at,
-                            "lang": "fr",
-                        }
+                        logger.info("Lecture flux presse %s (%s) - %s", label, feed_name, feed_url)
 
-                        try:
-                            article = RSSArticle(**raw_data)
-                        except Exception as e:
-                            logger.warning("Invalid press article skipped (url=%s): %s", article_url, e)
-                            continue
+                        parsed = feedparser.parse(feed_url)
 
-                        #dédoublonnage par URL si disponible
-                        cur.execute(
-                            "SELECT 1 FROM articles_raw WHERE url = %s LIMIT 1;",
-                            (str(article.url),),
-                        )
-                        if cur.fetchone():
-                            #déjà vu, peu importe le flux (une, politique, etc.)
-                            continue
-
-                        # Insertion
-                        cur.execute(
-                            """
-                            INSERT INTO articles_raw (
-                                source,
-                                media_type,
-                                feed_name,
-                                title,
-                                summary,
-                                url,
-                                raw_content,
-                                published_at
+                        if parsed.bozo:
+                            logger.warning(
+                                "Flux mal formé ou erreur réseau pour %s : %s",
+                                feed_url,
+                                getattr(parsed, "bozo_exception", None),
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-                            """,
-                            (
-                                source_key,           # ex: lemonde, lefigaro...
-                                "press",              # media_type
-                                feed_name,            # ex: une, politique
-                                article.title,
-                                article.content,
-                                str(article.url),     #validé + normalisé
-                                None,                 # raw_content (scraping full article plus tard)
-                                article.published_at, # toujours présent
-                            ),
-                        )
-                        total_inserted += 1
 
-        conn.commit()
-        logger.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted)
+                        for entry in parsed.entries:
+                            title = (getattr(entry, "title", "") or "").strip()
+                            summary = (getattr(entry, "summary", "") or "").strip()
+                            article_url = getattr(entry, "link", None)
 
-    except Exception as e:
-        conn.rollback()
-        logger.error("Erreur durant l'ingestion presse : %s", e)
-        raise
+                            if not title:
+                                continue
 
-    finally:
-        conn.close()
+                            published_at = parse_published(entry)
+
+                            if published_at is None:
+                                published_at = datetime.now(timezone.utc)
+
+                            if not article_url:
+                                logger.warning(
+                                    "Entrée presse ignorée (url manquante) source=%s feed=%s title=%s",
+                                    source_key, feed_name, title[:120]
+                                )
+                                continue
+
+                            raw_data = {
+                                "source": source_key,
+                                "category": feed_name,
+                                "title": title,
+                                "content": summary,
+                                "url": article_url,
+                                "published_at": published_at,
+                                "lang": "fr",
+                            }
+
+                            try:
+                                article = RSSArticle(**raw_data)
+                            except Exception as e:
+                                logger.warning("Invalid press article skipped (url=%s): %s", article_url, e)
+                                continue
+
+                            cur.execute(
+                                "SELECT 1 FROM articles_raw WHERE url = %s LIMIT 1;",
+                                (str(article.url),),
+                            )
+                            if cur.fetchone():
+                                continue
+
+                            cur.execute(
+                                """
+                                INSERT INTO articles_raw (
+                                    source,
+                                    media_type,
+                                    feed_name,
+                                    title,
+                                    summary,
+                                    url,
+                                    raw_content,
+                                    published_at
+                                )
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                                """,
+                                (
+                                    source_key,
+                                    "press",
+                                    feed_name,
+                                    article.title,
+                                    article.content,
+                                    str(article.url),
+                                    None,
+                                    article.published_at,
+                                ),
+                            )
+                            total_inserted += 1
+
+            conn.commit()
+            logger.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted)
+
+        except Exception as e:
+            conn.rollback()
+            logger.error("Erreur durant l'ingestion presse : %s", e)
+            raise
 
 
 if __name__ == "__main__":

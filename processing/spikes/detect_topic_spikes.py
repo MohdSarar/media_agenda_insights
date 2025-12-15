@@ -81,21 +81,21 @@ def save_spikes(conn: PGConnection, df: pd.DataFrame) -> None:
 
 def main() -> None:
     logger.info("Loading topic totals...")
-    conn = get_conn()
+    with get_conn() as conn:
 
-    try:
-        df = load_topic_totals(conn)
-        if df.empty:
-            logger.info("No topic data found.")
-            return
+        try:
+            df = load_topic_totals(conn)
+            if df.empty:
+                logger.info("No topic data found.")
+                return
 
-        spike_df = compute_spikes(df)
-        logger.info(f"{len(spike_df)} spikes detected.")
+            spike_df = compute_spikes(df)
+            logger.info(f"{len(spike_df)} spikes detected.")
 
-        save_spikes(conn, spike_df)
-        logger.info("Spike detection COMPLETE.")
-    finally:
-        conn.close()
+            save_spikes(conn, spike_df)
+            logger.info("Spike detection COMPLETE.")
+        finally:
+            pass
 
 if __name__ == "__main__":
     main()

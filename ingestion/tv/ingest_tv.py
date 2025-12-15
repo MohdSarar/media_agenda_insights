@@ -1,10 +1,11 @@
+from core.db import get_conn
 import os
 import datetime as dt
 from core.logging import get_logger
 
 
 import feedparser
-import psycopg2
+
 import yaml
 from dotenv import load_dotenv
 from typing import Any, Mapping, Optional, TypedDict
@@ -39,11 +40,7 @@ def load_feeds_config(path: str) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def get_db_connection() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
-    return psycopg2.connect(DB_URL)
-
+get_db_connection = get_conn
 
 def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
     """
@@ -81,97 +78,97 @@ def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
     }
 
 
+from core.db import get_conn  # make sure this import exists
+
 def ingest_tv_feeds() -> None:
     feeds_cfg = load_feeds_config(CONFIG_PATH)
     logger.info(f"Chargement des flux TV depuis {CONFIG_PATH}")
 
-    conn = get_db_connection()
-    conn.autocommit = False
-    cur = conn.cursor()
-
     inserted_count = 0
 
-    try:
-        for source_key, source_info in feeds_cfg.items():
-            label = source_info.get("label", source_key)
-            feeds = source_info.get("feeds", [])
+    with get_conn() as conn:
+        conn.autocommit = False
 
-            for feed in feeds:
-                feed_name = feed.get("name")
-                feed_url = feed.get("url")
+        try:
+            with conn.cursor() as cur:
+                for source_key, source_info in feeds_cfg.items():
+                    label = source_info.get("label", source_key)
+                    feeds = source_info.get("feeds", [])
 
-                if not feed_url:
-                    logger.warning(f"[{label}] Feed '{feed_name}' sans URL, ignoré.")
-                    continue
+                    for feed in feeds:
+                        feed_name = feed.get("name")
+                        feed_url = feed.get("url")
 
-                logger.info(f"Ingestion feed {label}/{feed_name} : {feed_url}")
+                        if not feed_url:
+                            logger.warning(f"[{label}] Feed '{feed_name}' sans URL, ignoré.")
+                            continue
 
-                parsed = feedparser.parse(feed_url)
+                        logger.info(f"Ingestion feed {label}/{feed_name} : {feed_url}")
 
-                if parsed.bozo:
-                    logger.warning(
-                        f"Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
-                    )
+                        parsed = feedparser.parse(feed_url)
 
-                for entry in parsed.entries:
-                    data = parse_entry(entry)
-                    if not data:
-                        continue
-
-                    # Validation Pydantic AVANT DB
-                    raw_data = {
-                        "source": source_key,         
-                        "category": feed_name,        
-                        "title": data["title"],
-                        "content": data["summary"],    
-                        "url": data["url"],
-                        "published_at": data["published_at"],
-                        "lang": "fr",             
-                    }
-
-                    try:
-                        article = RSSArticle(**raw_data)
-                    except Exception as e:
-                        logger.warning("Invalid TV article skipped (url=%s): %s", raw_data.get("url"), e)
-                        continue
-                            
-
-
-                    try:
-                        cur.execute(
-                            """
-                            INSERT INTO articles_raw
-                            (source, media_type, feed_name, title, summary, url, published_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (url) DO NOTHING
-                            """,
-                            (
-                                source_key,         
-                                "tv",               
-                                feed_name,          
-                                article.title,
-                                article.content,    
-                                str(article.url),   
-                                article.published_at,
+                        if parsed.bozo:
+                            logger.warning(
+                                f"Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
                             )
-                        )
-                        if cur.rowcount > 0:
-                            inserted_count += 1
-                    except Exception as e:
-                        logger.error(
-                            f"Erreur insertion article (source={source_key}, url={data['url']}): {e}"
-                        )
 
-        conn.commit()
-        logger.info(f"Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
+                        for entry in parsed.entries:
+                            data = parse_entry(entry)
+                            if not data:
+                                continue
 
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Erreur pendant l'ingestion TV, rollback effectué: {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
+                            raw_data = {
+                                "source": source_key,
+                                "category": feed_name,
+                                "title": data["title"],
+                                "content": data["summary"],
+                                "url": data["url"],
+                                "published_at": data["published_at"],
+                                "lang": "fr",
+                            }
+
+                            try:
+                                article = RSSArticle(**raw_data)
+                            except Exception as e:
+                                logger.warning(
+                                    "Invalid TV article skipped (url=%s): %s",
+                                    raw_data.get("url"),
+                                    e,
+                                )
+                                continue
+
+                            try:
+                                cur.execute(
+                                    """
+                                    INSERT INTO articles_raw
+                                    (source, media_type, feed_name, title, summary, url, published_at)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT (url) DO NOTHING
+                                    """,
+                                    (
+                                        source_key,
+                                        "tv",
+                                        feed_name,
+                                        article.title,
+                                        article.content,
+                                        str(article.url),
+                                        article.published_at,
+                                    ),
+                                )
+                                if cur.rowcount > 0:
+                                    inserted_count += 1
+                            except Exception as e:
+                                logger.error(
+                                    f"Erreur insertion article (source={source_key}, url={data['url']}): {e}"
+                                )
+
+            conn.commit()
+            logger.info(f"Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
+
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Erreur pendant l'ingestion TV, rollback effectué: {e}")
+            raise
 
 
 if __name__ == "__main__":

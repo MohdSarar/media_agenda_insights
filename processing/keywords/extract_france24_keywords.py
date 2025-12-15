@@ -1,3 +1,4 @@
+from core.db import get_conn
 # processing/keywords/extract_france24_keywords.py
 
 import os
@@ -89,8 +90,6 @@ LANG_STOPWORDS = {
 DEFAULT_STOPWORDS = STOP_FR
 
 
-def get_conn()-> PGConnection:
-    return psycopg2.connect(DB_URL)
 
 
 def fetch_lemmas_by_group(
@@ -170,63 +169,63 @@ def build_word_counts(
 
 
 def compute_france24_keywords_daily() -> None:
-    conn = get_conn()
-    conn.autocommit = False
-    cur = conn.cursor()
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    try:
-        groups = fetch_lemmas_by_group(cur)
-        done_keys = already_computed_keys(cur)
+        try:
+            groups = fetch_lemmas_by_group(cur)
+            done_keys = already_computed_keys(cur)
 
-        logger.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
-        rows_to_insert = []
+            logger.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
+            rows_to_insert = []
 
-        # Top mots-clés par (date, source, lang)
-        for (date, source, lang), lemmas_lists in groups.items():
-            if (date, source, lang) in done_keys:
-                continue
+            # Top mots-clés par (date, source, lang)
+            for (date, source, lang), lemmas_lists in groups.items():
+                if (date, source, lang) in done_keys:
+                    continue
 
-            counter = build_word_counts(lemmas_lists, lang)
-            if not counter:
-                continue
+                counter = build_word_counts(lemmas_lists, lang)
+                if not counter:
+                    continue
 
-            top10 = counter.most_common(10)
-            for rank, (word, count) in enumerate(top10, start=1):
-                rows_to_insert.append(
+                top10 = counter.most_common(10)
+                for rank, (word, count) in enumerate(top10, start=1):
+                    rows_to_insert.append(
+                        (date, source, lang, word, count, rank)
+                    )
+
+            if not rows_to_insert:
+                logger.info("Aucun nouveau mot-clé France 24 à insérer.")
+                conn.rollback()
+                return
+
+            logger.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily_f24...")
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO keywords_daily_f24
                     (date, source, lang, word, count, rank)
-                )
+                VALUES %s
+                ON CONFLICT (date, source, lang, word)
+                DO UPDATE SET
+                count = EXCLUDED.count,
+                rank = EXCLUDED.rank
+                """,
+                rows_to_insert
+            )
 
-        if not rows_to_insert:
-            logger.info("Aucun nouveau mot-clé France 24 à insérer.")
+            conn.commit()
+            logger.info("keywords_daily_f24 mis à jour.")
+
+        except Exception as e:
             conn.rollback()
-            return
+            logger.error(f"Erreur extraction keywords France 24 : {e}")
+            raise
+        finally:
+            cur.close()
 
-        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily_f24...")
-
-        execute_values(
-            cur,
-            """
-            INSERT INTO keywords_daily_f24
-                (date, source, lang, word, count, rank)
-            VALUES %s
-            ON CONFLICT (date, source, lang, word)
-            DO UPDATE SET
-              count = EXCLUDED.count,
-              rank = EXCLUDED.rank
-            """,
-            rows_to_insert
-        )
-
-        conn.commit()
-        logger.info("keywords_daily_f24 mis à jour.")
-
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Erreur extraction keywords France 24 : {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
 
 
 if __name__ == "__main__":

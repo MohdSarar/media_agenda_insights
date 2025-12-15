@@ -1,3 +1,4 @@
+from core.db import get_conn
 # processing/topics/extract_france24_topics.py
 
 import os
@@ -54,8 +55,6 @@ LANG_STOPWORDS = {"fr": STOP_FR, "en": STOP_EN, "es": STOP_ES, "ar": STOP_AR}
 DEFAULT_STOPWORDS = STOP_EN  # fallback
 
 
-def get_conn() -> PGConnection:
-    return psycopg2.connect(DB_URL)
 
 
 def normalize_lang(lang: str) -> str:
@@ -199,92 +198,92 @@ def extract_topics(
 
 
 def compute_france24_topics_daily() -> None:
-    conn = get_conn()
-    conn.autocommit = False
-    cur = conn.cursor()
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    try:
-        groups = fetch_docs_by_group(cur)
-        done = already_computed_keys(cur)
+        try:
+            groups = fetch_docs_by_group(cur)
+            done = already_computed_keys(cur)
 
-        logger.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
-        rows_to_insert = []
+            logger.info(f"{len(groups)} groupes (date, source, lang) trouvés.")
+            rows_to_insert = []
 
-        # Pour un "ALL" par (date, lang) (utile pour une vue globale par langue)
-        per_date_lang_docs = defaultdict(list)
+            # Pour un "ALL" par (date, lang) (utile pour une vue globale par langue)
+            per_date_lang_docs = defaultdict(list)
 
-        for (date, source, lang), docs in groups.items():
-            if (date, source, lang) in done:
-                continue
-
-            per_date_lang_docs[(date, lang)].extend(docs)
-
-            topic_keywords, topic_counts = extract_topics(docs)
-            if not topic_keywords:
-                logger.info(f"[{date}] {source}/{lang}: aucun topic détecté (docs={len(docs)}).")
-                continue
-
-            for tid, keywords in topic_keywords.items():
-                count = int(topic_counts.get(tid, 0))
-                if count <= 0:
+            for (date, source, lang), docs in groups.items():
+                if (date, source, lang) in done:
                     continue
-                topic_label = ", ".join(keywords[:3]) if keywords else f"topic_{tid}"
 
-                rows_to_insert.append((
-                    date, source, lang, tid, topic_label, count, keywords
-                ))
+                per_date_lang_docs[(date, lang)].extend(docs)
 
-        # ALL par (date, lang) — sans mixer les langues
-        for (date, lang), docs in per_date_lang_docs.items():
-            if (date, "ALL", lang) in done:
-                continue
-
-            topic_keywords, topic_counts = extract_topics(docs)
-            if not topic_keywords:
-                continue
-
-            for tid, keywords in topic_keywords.items():
-                count = int(topic_counts.get(tid, 0))
-                if count <= 0:
+                topic_keywords, topic_counts = extract_topics(docs)
+                if not topic_keywords:
+                    logger.info(f"[{date}] {source}/{lang}: aucun topic détecté (docs={len(docs)}).")
                     continue
-                topic_label = ", ".join(keywords[:3]) if keywords else f"topic_{tid}"
-                rows_to_insert.append((
-                    date, "ALL", lang, tid, topic_label, count, keywords
-                ))
 
-        if not rows_to_insert:
-            logger.info("Aucun topic France 24 à insérer.")
+                for tid, keywords in topic_keywords.items():
+                    count = int(topic_counts.get(tid, 0))
+                    if count <= 0:
+                        continue
+                    topic_label = ", ".join(keywords[:3]) if keywords else f"topic_{tid}"
+
+                    rows_to_insert.append((
+                        date, source, lang, tid, topic_label, count, keywords
+                    ))
+
+            # ALL par (date, lang) — sans mixer les langues
+            for (date, lang), docs in per_date_lang_docs.items():
+                if (date, "ALL", lang) in done:
+                    continue
+
+                topic_keywords, topic_counts = extract_topics(docs)
+                if not topic_keywords:
+                    continue
+
+                for tid, keywords in topic_keywords.items():
+                    count = int(topic_counts.get(tid, 0))
+                    if count <= 0:
+                        continue
+                    topic_label = ", ".join(keywords[:3]) if keywords else f"topic_{tid}"
+                    rows_to_insert.append((
+                        date, "ALL", lang, tid, topic_label, count, keywords
+                    ))
+
+            if not rows_to_insert:
+                logger.info("Aucun topic France 24 à insérer.")
+                conn.rollback()
+                return
+
+            logger.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily_f24...")
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO topics_daily_f24
+                (date, source, lang, topic_id, topic_label, articles_count, keywords)
+                VALUES %s
+                ON CONFLICT (date, source, lang, topic_id)
+                DO UPDATE SET
+                topic_label = EXCLUDED.topic_label,
+                articles_count = EXCLUDED.articles_count,
+                keywords = EXCLUDED.keywords;
+
+                """,
+                rows_to_insert
+            )
+
+            conn.commit()
+            logger.info("topics_daily_f24 mis à jour.")
+
+        except Exception as e:
             conn.rollback()
-            return
+            logger.error(f"Erreur topics_daily_f24 : {e}")
+            raise
+        finally:
+            cur.close()
 
-        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily_f24...")
-
-        execute_values(
-            cur,
-            """
-            INSERT INTO topics_daily_f24
-            (date, source, lang, topic_id, topic_label, articles_count, keywords)
-            VALUES %s
-            ON CONFLICT (date, source, lang, topic_id)
-            DO UPDATE SET
-            topic_label = EXCLUDED.topic_label,
-            articles_count = EXCLUDED.articles_count,
-            keywords = EXCLUDED.keywords;
-
-            """,
-            rows_to_insert
-        )
-
-        conn.commit()
-        logger.info("topics_daily_f24 mis à jour.")
-
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Erreur topics_daily_f24 : {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 from core.logging import get_logger
 import psycopg2
@@ -32,11 +33,7 @@ stanza_nlp = stanza.Pipeline(
 spacy_nlp = spacy.load("fr_core_news_sm")
 
 
-def get_db_connection() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
-    return psycopg2.connect(DB_URL)
-
+get_db_connection = get_conn
 
 def fetch_unprocessed_articles(
         cur: PGCursor,
@@ -146,44 +143,44 @@ def insert_clean(
 
 
 def process_articles()  -> None:
-    conn = get_db_connection()
-    conn.autocommit = False
-    cur = conn.cursor()
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    try:
-        articles = fetch_unprocessed_articles(cur)
-        logger.info(f"{len(articles)} articles à traiter.")
+        try:
+            articles = fetch_unprocessed_articles(cur)
+            logger.info(f"{len(articles)} articles à traiter.")
 
-        count = 0
+            count = 0
 
-        for article_id, title, summary in articles:
-            # Texte brut (titre + résumé)
-            raw_text = f"{title or ''}. {summary or ''}"
+            for article_id, title, summary in articles:
+                # Texte brut (titre + résumé)
+                raw_text = f"{title or ''}. {summary or ''}"
 
-            # 1) Nettoyage HTML
-            html_cleaned = clean_html(raw_text)
+                # 1) Nettoyage HTML
+                html_cleaned = clean_html(raw_text)
 
-            # 2) Nettoyage simple
-            cleaned = clean_text(html_cleaned)
+                # 2) Nettoyage simple
+                cleaned = clean_text(html_cleaned)
 
-            # 3) NLP (Stanza + spaCy) sur le texte nettoyé
-            tokens, lemmas, ents = process_text_stanza_and_spacy(cleaned)
+                # 3) NLP (Stanza + spaCy) sur le texte nettoyé
+                tokens, lemmas, ents = process_text_stanza_and_spacy(cleaned)
 
-            # 4) Insertion en base
-            insert_clean(cur, article_id, cleaned, tokens, lemmas, ents)
-            count += 1
+                # 4) Insertion en base
+                insert_clean(cur, article_id, cleaned, tokens, lemmas, ents)
+                count += 1
 
-        conn.commit()
-        logger.info(f"Traitement NLP (Stanza + spaCy) terminé. Articles nettoyés : {count}")
+            conn.commit()
+            logger.info(f"Traitement NLP (Stanza + spaCy) terminé. Articles nettoyés : {count}")
 
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Erreur NLP (Stanza + spaCy) : {e}")
-        raise
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Erreur NLP (Stanza + spaCy) : {e}")
+            raise
 
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
+        
 
 
 if __name__ == "__main__":

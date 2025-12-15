@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core.db import get_conn
 import os
 from core.logging import get_logger
 from typing import Any, Optional
@@ -14,8 +15,6 @@ logger = get_logger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 GAP_THRESHOLD = 2   # topic survives if gap <= 2 days
 
-def get_conn():
-    return psycopg2.connect(DATABASE_URL)
 
 def load_keywords(conn: PGConnection) -> pd.DataFrame:
     sql = """
@@ -99,8 +98,8 @@ def save(conn: PGConnection, rows: list[KeywordLifetimeRow]) -> None:
     conn.commit()
 
 def main() -> None:
-    conn = get_conn()
-    try:
+    with get_conn() as conn:
+      
         df = load_keywords(conn)
         if df.empty:
             logger.info("No keyword data.")
@@ -109,8 +108,7 @@ def main() -> None:
         rows = compute_lifetime(df)
         save(conn, rows)
         logger.info("Keyword lifetime COMPLETE.")
-    finally:
-        conn.close()
+    
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 import re
 import json
@@ -31,11 +32,7 @@ RE_TOKEN_OK = re.compile(r"^[A-Za-zÀ-ÿ\u0600-\u06FF][A-Za-zÀ-ÿ\u0600-\u06FF0
 RE_DIGITS = re.compile(r"^\d+$")
 
 
-def connect_db() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL introuvable (.env)")
-    return psycopg2.connect(DB_URL)
-
+connect_db = get_conn
 
 def ensure_nltk():
     try:
@@ -206,8 +203,8 @@ def main() -> None:
     start_date = today - dt.timedelta(days=DAYS_BACK)
     end_date = today
 
-    conn = connect_db()
-    try:
+    with get_conn() as conn:
+    
         data = fetch_docs(conn, start_date, end_date)
         logger.info("Fetched %s docs (from %s to %s).", len(data), start_date, end_date)
 
@@ -289,10 +286,10 @@ def main() -> None:
             return
 
         sql = """
-          INSERT INTO social_topics_daily (date, platform, source, lang, topic_id, top_terms, weight, n_docs)
-          VALUES %s
-          ON CONFLICT (date, platform, source, lang, topic_id)
-          DO UPDATE SET
+        INSERT INTO social_topics_daily (date, platform, source, lang, topic_id, top_terms, weight, n_docs)
+        VALUES %s
+        ON CONFLICT (date, platform, source, lang, topic_id)
+        DO UPDATE SET
             top_terms = EXCLUDED.top_terms,
             weight = EXCLUDED.weight,
             n_docs = EXCLUDED.n_docs;
@@ -310,8 +307,6 @@ def main() -> None:
         conn.commit()
         logger.info("Upserted %s topic rows into social_topics_daily.", len(rows))
 
-    finally:
-        conn.close()
 
 
 

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from core.db import get_conn
+
 
 import os
 from core.logging import get_logger
@@ -15,8 +17,6 @@ logger = get_logger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 GAP_THRESHOLD = 2
 
-def get_conn() -> PGConnection:
-    return psycopg2.connect(DATABASE_URL)
 
 def load_themes(conn: PGConnection) -> pd.DataFrame:
     sql = """
@@ -107,14 +107,13 @@ def save(conn: PGConnection, rows: list[ThemeLifetimeRow]) -> None:
     conn.commit()
 
 def main() -> None:
-    conn = get_conn()
-    try:
+    with get_conn() as conn:
+  
         df = load_themes(conn)
         rows = compute_lifetime(df)
         save(conn, rows)
         logger.info("Theme lifetime COMPLETE.")
-    finally:
-        conn.close()
+  
 
 if __name__ == "__main__":
     main()

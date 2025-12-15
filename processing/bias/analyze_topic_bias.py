@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 from core.logging import get_logger
 
@@ -17,8 +18,6 @@ DATABASE_URL = os.getenv(
 logger = get_logger(__name__)
 
 
-def get_conn() -> PGConnection:
-    return psycopg2.connect(DATABASE_URL)
 
 def load_topics(conn: PGConnection) -> pd.DataFrame:
     sql = """
@@ -84,8 +83,7 @@ def save_bias(conn: PGConnection, df: pd.DataFrame) -> None:
 
 def main() -> None:
     logger.info("Loading topic data...")
-    conn = get_conn()
-    try:
+    with get_conn() as conn:
         df = load_topics(conn)
         logger.info(f"{len(df)} topic rows loaded.")
 
@@ -94,8 +92,7 @@ def main() -> None:
 
         save_bias(conn, bias_df)
         logger.info("Bias analysis COMPLETE.")
-    finally:
-        conn.close()
+
 
 if __name__ == "__main__":
     main()

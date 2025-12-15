@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 import re
 import json
@@ -44,11 +45,7 @@ RE_HASHTAG = re.compile(r"#([A-Za-z0-9_À-ÿ\u0600-\u06FF]+)")
 MIN_CHARS_FOR_LANG = 30
 
 
-def connect_db() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL introuvable. Vérifie ton .env")
-    return psycopg2.connect(DB_URL)
-
+connect_db = get_conn
 
 def clean_text_basic(text: str) -> str:
     """
@@ -288,61 +285,56 @@ def upsert_clean(conn: PGConnection, rec: Dict[str, Any]) -> None:
 
 
 def main() -> None:
-    conn = connect_db()
-    total = 0
+    with get_conn() as conn:
+        total = 0
 
-    try:
-        while True:
-            batch = fetch_unprocessed(conn, BATCH_SIZE)
-            if not batch:
-                logger.info("No new social posts to process. Done.")
-                break
-
-            logger.info("Processing batch size=%s", len(batch))
-
-            for row in batch:
-                # IMPORTANT: if content is NULL, we use title (your observation is normal)
-                base_text = row["content"] if row.get("content") else (row.get("title") or "")
-                base_text = base_text.strip()
-
-                hashtags = extract_hashtags(base_text)
-                cleaned = clean_text_basic(base_text)
-
-                lang = detect_lang(cleaned)
-                tokens, lemmas, entities = nlp_extract(lang, cleaned)
-
-                rec = {
-                    "platform": row["platform"],
-                    "source": row["source"],
-                    "external_id": row["external_id"],
-                    "url": row.get("url"),
-                    "title": row.get("title"),
-                    "clean_text": cleaned,
-                    "lang": lang,
-                    "tokens": tokens,
-                    "lemmas": lemmas,
-                    "entities": entities,
-                    "hashtags": hashtags,
-                }
-
-                upsert_clean(conn, rec)
-                total += 1
-
-            conn.commit()
-            logger.info("Committed batch. total_processed=%s", total)
-
-    except KeyboardInterrupt:
-        logger.warning("Interrupted by user. Committing current transaction if possible.")
         try:
-            conn.commit()
-        except Exception:
-            pass
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+            while True:
+                batch = fetch_unprocessed(conn, BATCH_SIZE)
+                if not batch:
+                    logger.info("No new social posts to process. Done.")
+                    break
 
+                logger.info("Processing batch size=%s", len(batch))
+
+                for row in batch:
+                    # IMPORTANT: if content is NULL, we use title (your observation is normal)
+                    base_text = row["content"] if row.get("content") else (row.get("title") or "")
+                    base_text = base_text.strip()
+
+                    hashtags = extract_hashtags(base_text)
+                    cleaned = clean_text_basic(base_text)
+
+                    lang = detect_lang(cleaned)
+                    tokens, lemmas, entities = nlp_extract(lang, cleaned)
+
+                    rec = {
+                        "platform": row["platform"],
+                        "source": row["source"],
+                        "external_id": row["external_id"],
+                        "url": row.get("url"),
+                        "title": row.get("title"),
+                        "clean_text": cleaned,
+                        "lang": lang,
+                        "tokens": tokens,
+                        "lemmas": lemmas,
+                        "entities": entities,
+                        "hashtags": hashtags,
+                    }
+
+                    upsert_clean(conn, rec)
+                    total += 1
+
+                conn.commit()
+                logger.info("Committed batch. total_processed=%s", total)
+
+        except KeyboardInterrupt:
+            logger.warning("Interrupted by user. Committing current transaction if possible.")
+            try:
+                conn.commit()
+            except Exception:
+                pass
+   
 
 if __name__ == "__main__":
     main()

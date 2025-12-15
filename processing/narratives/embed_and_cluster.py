@@ -1,3 +1,4 @@
+from core.db import get_conn
 # processing/narratives/embed_and_cluster.py
 
 import os
@@ -22,11 +23,7 @@ DB_URL = os.getenv("DATABASE_URL")
 logger = get_logger(__name__)
 # ---------------- Connexion DB ----------------
 
-def get_conn() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
-    return psycopg2.connect(DB_URL)
-
+get_conn = get_conn
 
 # ---------------- Chargement des articles ----------------
 
@@ -321,9 +318,9 @@ def insert_assignments(conn: PGConnection, df_with_clusters: pd.DataFrame) -> No
 # ---------------- Main pipeline ----------------
 
 def main() -> None:
-    conn = get_conn()
+    with get_conn() as conn :
 
-    try:
+   
         df = fetch_articles_for_narratives(conn)
         if df.empty:
             logger.warning("Aucun article disponible pour le clustering.")
@@ -342,8 +339,6 @@ def main() -> None:
 
         logger.info("Pipeline narratifs (embeddings + clustering) terminé avec succès.")
 
-    finally:
-        conn.close()
 
 
 if __name__ == "__main__":

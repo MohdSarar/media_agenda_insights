@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 from core.logging import get_logger
 from collections import Counter, defaultdict
@@ -43,8 +44,6 @@ CUSTOM_STOPWORDS = {
 
 USELESS_WORDS = SPACY_STOP | NLTK_STOP | CUSTOM_STOPWORDS
 
-def get_conn() -> PGConnection:
-    return psycopg2.connect(DB_URL)
 
 
 def fetch_lemmas_by_day(
@@ -104,88 +103,88 @@ def build_word_counts(
 
 
 def compute_keywords_daily() -> None:
-    conn = get_conn()
-    conn.autocommit = False
-    cur = conn.cursor()
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    try:
-        groups = fetch_lemmas_by_day(cur)
-        done_dates = already_computed_dates(cur)
+        try:
+            groups = fetch_lemmas_by_day(cur)
+            done_dates = already_computed_dates(cur)
 
-        logger.info(f"{len(groups)} groupes (date, source, media_type) trouvés.")
-        rows_to_insert = []
+            logger.info(f"{len(groups)} groupes (date, source, media_type) trouvés.")
+            rows_to_insert = []
 
-        per_date_media = defaultdict(Counter)  # (date, media_type) -> Counter
-        per_date_all = defaultdict(Counter)    # date -> Counter global
+            per_date_media = defaultdict(Counter)  # (date, media_type) -> Counter
+            per_date_all = defaultdict(Counter)    # date -> Counter global
 
-        # 1) par (date, source, media_type)
-        for (date, source, media_type), lemmas_lists in groups.items():
-            if date in done_dates:
-                continue
+            # 1) par (date, source, media_type)
+            for (date, source, media_type), lemmas_lists in groups.items():
+                if date in done_dates:
+                    continue
 
-            counter = build_word_counts(lemmas_lists)
-            if not counter:
-                continue
+                counter = build_word_counts(lemmas_lists)
+                if not counter:
+                    continue
 
-            per_date_media[(date, media_type)] += counter
-            per_date_all[date] += counter
+                per_date_media[(date, media_type)] += counter
+                per_date_all[date] += counter
 
-            top10 = counter.most_common(10)
-            for rank, (word, count) in enumerate(top10, start=1):
-                rows_to_insert.append(
-                    (date, source, media_type, word, count, rank)
-                )
+                top10 = counter.most_common(10)
+                for rank, (word, count) in enumerate(top10, start=1):
+                    rows_to_insert.append(
+                        (date, source, media_type, word, count, rank)
+                    )
 
-        # 2) 'ALL' pour chaque (date, media_type)
-        for (date, media_type), counter in per_date_media.items():
-            if date in done_dates:
-                continue
-            top10 = counter.most_common(10)
-            for rank, (word, count) in enumerate(top10, start=1):
-                rows_to_insert.append(
-                    (date, "ALL", media_type, word, count, rank)
-                )
+            # 2) 'ALL' pour chaque (date, media_type)
+            for (date, media_type), counter in per_date_media.items():
+                if date in done_dates:
+                    continue
+                top10 = counter.most_common(10)
+                for rank, (word, count) in enumerate(top10, start=1):
+                    rows_to_insert.append(
+                        (date, "ALL", media_type, word, count, rank)
+                    )
 
-        # 3) 'ALL' global (date, ALL, ALL)
-        for date, counter in per_date_all.items():
-            if date in done_dates:
-                continue
-            top10 = counter.most_common(10)
-            for rank, (word, count) in enumerate(top10, start=1):
-                rows_to_insert.append(
-                    (date, "ALL", "ALL", word, count, rank)
-                )
+            # 3) 'ALL' global (date, ALL, ALL)
+            for date, counter in per_date_all.items():
+                if date in done_dates:
+                    continue
+                top10 = counter.most_common(10)
+                for rank, (word, count) in enumerate(top10, start=1):
+                    rows_to_insert.append(
+                        (date, "ALL", "ALL", word, count, rank)
+                    )
 
-        if not rows_to_insert:
-            logger.info("Aucun nouveau mot-clé à insérer.")
+            if not rows_to_insert:
+                logger.info("Aucun nouveau mot-clé à insérer.")
+                conn.rollback()
+                return
+
+            logger.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily...")
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO keywords_daily (date, source, media_type, word, count, rank)
+                VALUES %s
+                ON CONFLICT (date, source, media_type, word)
+                DO UPDATE SET
+                count = EXCLUDED.count,
+                rank = EXCLUDED.rank
+                """,
+                rows_to_insert
+            )
+
+            conn.commit()
+            logger.info("keywords_daily mis à jour.")
+
+        except Exception as e:
             conn.rollback()
-            return
-
-        logger.info(f"Insertion de {len(rows_to_insert)} lignes dans keywords_daily...")
-
-        execute_values(
-            cur,
-            """
-            INSERT INTO keywords_daily (date, source, media_type, word, count, rank)
-            VALUES %s
-            ON CONFLICT (date, source, media_type, word)
-            DO UPDATE SET
-              count = EXCLUDED.count,
-              rank = EXCLUDED.rank
-            """,
-            rows_to_insert
-        )
-
-        conn.commit()
-        logger.info("keywords_daily mis à jour.")
-
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Erreur extraction keywords : {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
+            logger.error(f"Erreur extraction keywords : {e}")
+            raise
+        finally:
+            cur.close()
+        
 
 
 if __name__ == "__main__":

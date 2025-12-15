@@ -1,3 +1,4 @@
+from core.db import get_conn
 import os
 import json
 import time
@@ -52,11 +53,7 @@ def load_config(path: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def connect_db() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL introuvable. Vérifie ton .env")
-    return psycopg2.connect(DB_URL)
-
+connect_db = get_conn
 
 def reddit_fetch(subreddit: str, mode: str = "new", limit: int = 100) -> JsonDict:
     mode = (mode or "new").strip().lower()
@@ -173,11 +170,12 @@ def main() -> None:
         logger.warning("Aucune source Reddit dans feeds_social.yaml (reddit.sources).")
         return
 
-    conn = connect_db()
-    total_inserted = 0
-    total_skipped = 0
+    with get_conn() as conn:
+        
+        total_inserted = 0
+        total_skipped = 0
 
-    try:
+   
         for src in sources:
             name = (src.get("name") or "").strip()
             subreddit = (src.get("subreddit") or "").strip()
@@ -209,11 +207,7 @@ def main() -> None:
 
         logger.info("DONE Reddit ingestion. total_inserted=%s total_skipped=%s", total_inserted, total_skipped)
 
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+    
 
 
 if __name__ == "__main__":

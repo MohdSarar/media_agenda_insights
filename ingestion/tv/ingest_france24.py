@@ -1,10 +1,11 @@
+from core.db import get_conn
 import os
 import datetime as dt
 from core.logging import get_logger
 
 
 import feedparser
-import psycopg2
+
 import yaml
 from dotenv import load_dotenv
 
@@ -39,11 +40,7 @@ def load_feeds_config(path: str) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def get_db_connection() -> PGConnection:
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
-    return psycopg2.connect(DB_URL)
-
+get_db_connection = get_conn
 
 def parse_entry(entry: Mapping[str, Any]) -> Optional[ParsedEntry]:
     """
@@ -78,94 +75,94 @@ def ingest_france24_feeds() -> None:
     feeds_cfg = load_feeds_config(CONFIG_PATH)
     logger.info(f"[F24] Chargement des flux France 24 depuis {CONFIG_PATH}")
 
-    conn = get_db_connection()
-    conn.autocommit = False
-    cur = conn.cursor()
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    inserted_count = 0
+        inserted_count = 0
 
-    try:
-        for source_key, source_info in feeds_cfg.items():
-            label = source_info.get("label", source_key)
-            lang = source_info.get("lang", "fr")
-            media_type = source_info.get("media_type", "tv")
-            feeds = source_info.get("feeds", [])
+        try:
+            for source_key, source_info in feeds_cfg.items():
+                label = source_info.get("label", source_key)
+                lang = source_info.get("lang", "fr")
+                media_type = source_info.get("media_type", "tv")
+                feeds = source_info.get("feeds", [])
 
-            for feed in feeds:
-                feed_name = feed.get("name")
-                feed_url = feed.get("url")
+                for feed in feeds:
+                    feed_name = feed.get("name")
+                    feed_url = feed.get("url")
 
-                if not feed_url:
-                    logger.warning(f"[F24][{label}] Feed '{feed_name}' sans URL, ignoré.")
-                    continue
-
-                logger.info(f"[F24] Ingestion {label}/{feed_name} : {feed_url}")
-                parsed = feedparser.parse(feed_url)
-
-                if parsed.bozo:
-                    logger.warning(
-                        f"[F24] Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
-                    )
-
-                for entry in parsed.entries:
-                    data = parse_entry(entry)
-                    if not data:
+                    if not feed_url:
+                        logger.warning(f"[F24][{label}] Feed '{feed_name}' sans URL, ignoré.")
                         continue
 
-                     # ✅ Validation Pydantic AVANT DB
-                    raw_data = {
-                        "source": source_key,          
-                        "category": feed_name,         
-                        "title": data["title"],
-                        "content": data["summary"],
-                        "url": data["url"],
-                        "published_at": data["published_at"],
-                        "lang": lang,                   
-                    }
+                    logger.info(f"[F24] Ingestion {label}/{feed_name} : {feed_url}")
+                    parsed = feedparser.parse(feed_url)
 
-                    try:
-                        article = RSSArticle(**raw_data)
-                    except Exception as e:
-                        logger.warning("[F24] Invalid article skipped (url=%s): %s", raw_data.get("url"), e)
-                        continue
+                    if parsed.bozo:
+                        logger.warning(
+                            f"[F24] Problème de parsing pour {feed_url}: {parsed.bozo_exception}"
+                        )
 
-                    try:
-                        cur.execute(
-                            """
-                            INSERT INTO articles_raw_f24
-                                (source, lang, media_type, feed_name,
-                                 title, summary, url, published_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (url) DO NOTHING
-                            """,
-                            (
-                                source_key,
-                                article.lang,
-                                media_type,
-                                feed_name,
-                                article.title,
-                                article.content,
-                                str(article.url),
-                                article.published_at,
+                    for entry in parsed.entries:
+                        data = parse_entry(entry)
+                        if not data:
+                            continue
+
+                        # ✅ Validation Pydantic AVANT DB
+                        raw_data = {
+                            "source": source_key,          
+                            "category": feed_name,         
+                            "title": data["title"],
+                            "content": data["summary"],
+                            "url": data["url"],
+                            "published_at": data["published_at"],
+                            "lang": lang,                   
+                        }
+
+                        try:
+                            article = RSSArticle(**raw_data)
+                        except Exception as e:
+                            logger.warning("[F24] Invalid article skipped (url=%s): %s", raw_data.get("url"), e)
+                            continue
+
+                        try:
+                            cur.execute(
+                                """
+                                INSERT INTO articles_raw_f24
+                                    (source, lang, media_type, feed_name,
+                                    title, summary, url, published_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (url) DO NOTHING
+                                """,
+                                (
+                                    source_key,
+                                    article.lang,
+                                    media_type,
+                                    feed_name,
+                                    article.title,
+                                    article.content,
+                                    str(article.url),
+                                    article.published_at,
+                                )
                             )
-                        )
-                        if cur.rowcount > 0:
-                            inserted_count += 1
-                    except Exception as e:
-                        logger.error(
-                            f"[F24] Erreur insertion (source={source_key}, url={data['url']}): {e}"
-                        )
+                            if cur.rowcount > 0:
+                                inserted_count += 1
+                        except Exception as e:
+                            logger.error(
+                                f"[F24] Erreur insertion (source={source_key}, url={data['url']}): {e}"
+                            )
 
-        conn.commit()
-        logger.info(f"[F24] Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
+            conn.commit()
+            logger.info(f"[F24] Ingestion terminée. Nouveaux articles insérés : {inserted_count}")
 
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"[F24] Erreur pendant l'ingestion France 24, rollback: {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"[F24] Erreur pendant l'ingestion France 24, rollback: {e}")
+            raise
+        finally:
+            cur.close()
+            
 
 
 if __name__ == "__main__":
