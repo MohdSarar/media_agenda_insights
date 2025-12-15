@@ -19,6 +19,8 @@ from datetime import datetime
 from core.db_types import PGConnection
 from datetime import datetime, timezone
 from core.schemas import RSSArticle
+import calendar
+
 
 # Charger les variables d'environnement (DATABASE_URL)
 load_dotenv()
@@ -64,16 +66,19 @@ def load_press_feeds() -> Dict[str, Any]:
 
 def parse_published(entry: Mapping[str, Any]) -> Optional[datetime]:
     """
-    Convertit la date RSS en datetime naive compatible PostgreSQL.
+    Convertit la date RSS en datetime naive (UTC) compatible PostgreSQL.
     Retourne None si pas de date exploitable.
     """
-    if getattr(entry, "published_parsed", None):
-        ts = time.mktime(entry.published_parsed)
-        return datetime.fromtimestamp(ts)
-    if getattr(entry, "updated_parsed", None):
-        ts = time.mktime(entry.updated_parsed)
-        return datetime.fromtimestamp(ts)
-    return None
+    parsed = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
+    if not parsed:
+        return None
+
+    try:
+        # feedparser donne un struct_time généralement en UTC
+        ts = calendar.timegm(parsed)
+        return datetime.utcfromtimestamp(ts)  # naive UTC
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def article_exists_with_date(

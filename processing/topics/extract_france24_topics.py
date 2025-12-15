@@ -1,4 +1,5 @@
 from core.db import get_conn
+from core.config import CONFIG
 # processing/topics/extract_france24_topics.py
 
 import os
@@ -145,7 +146,7 @@ def already_computed_keys(cur: PGCursor) -> set[tuple[dt.date, str, str]]:
 
 def extract_topics(
     docs: Sequence[str],
-    n_topics: int = 10,
+    n_topics: int | None = None,
     n_words: int = 8,
 ) -> list[dict[str, Any]]:
     """
@@ -154,11 +155,14 @@ def extract_topics(
       topic_keywords: dict(topic_id -> [keywords])
       topic_counts: Counter(topic_id -> nb_docs)
     """
+    if n_topics is None:
+        n_topics = int(CONFIG["topics"]["default_n_topics"])
+
     if not docs:
         return {}, Counter()
 
     # si trop peu de docs, NMF devient instable
-    if len(docs) < 5:
+    if len(docs) < int(CONFIG["topics"]["min_docs"]):
         return {}, Counter()
 
     n_components = min(n_topics, max(1, len(docs) // 2))

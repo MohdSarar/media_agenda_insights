@@ -11,6 +11,8 @@ import spacy
 import re
 from bs4 import BeautifulSoup
 
+from processing.nlp.text_cleaning import clean_html, clean_text
+
 from typing import Any, Optional
 from core.db_types import PGConnection, PGCursor, JsonDict, JsonList
 
@@ -51,46 +53,6 @@ def fetch_unprocessed_articles(
     return cur.fetchall()
 
 
-def clean_html(text: str) -> str:
-    """
-    Nettoyage HTML + artefacts techniques (img, 800x0, etc.)
-    """
-    if not text:
-        return ""
-
-    # Suppression des balises HTML
-    soup = BeautifulSoup(text, "html.parser")
-    clean = soup.get_text(separator=" ")
-
-    # Suppression des URLs
-    clean = re.sub(r'http\S+', ' ', clean)
-
-    # Suppression des patterns d'images / tailles
-    clean = re.sub(r'\b(img|jpg|jpeg|png|gif)\b', ' ', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'\b\d+x\d+\b', ' ', clean)  # ex: 800x0
-
-    # Suppression de quelques entités HTML courantes
-    clean = clean.replace("&nbsp;", " ")
-    clean = clean.replace("&amp;", " ")
-    clean = clean.replace("&quot;", " ")
-
-    # Résidus de "><"
-    clean = clean.replace("><", " ")
-
-    # Espaces multiples
-    clean = re.sub(r'\s+', ' ', clean)
-
-    return clean.strip()
-
-
-def clean_text(text: str) -> str:
-    """
-    Nettoyage général (retour à la ligne, espaces).
-    Appelée après clean_html pour normaliser.
-    """
-    if not text:
-        return ""
-    return text.replace("\n", " ").strip()
 
 
 def process_text_stanza_and_spacy(
@@ -138,7 +100,7 @@ def insert_clean(
         cleaned,
         tokens,
         lemmas,
-        Json(ents)  # sérialisation JSONB correcte
+        Json(ents)  #sérialisation JSONB correcte
     ))
 
 
@@ -154,19 +116,18 @@ def process_articles()  -> None:
             count = 0
 
             for article_id, title, summary in articles:
-                # Texte brut (titre + résumé)
+                #texte brut (titre + résumé)
                 raw_text = f"{title or ''}. {summary or ''}"
 
-                # 1) Nettoyage HTML
+                # nettoyage HTML
                 html_cleaned = clean_html(raw_text)
 
-                # 2) Nettoyage simple
+                #nettoyage simple
                 cleaned = clean_text(html_cleaned)
 
-                # 3) NLP (Stanza + spaCy) sur le texte nettoyé
+                # NLP (Stanza + spaCy) sur le texte nettoyé
                 tokens, lemmas, ents = process_text_stanza_and_spacy(cleaned)
 
-                # 4) Insertion en base
                 insert_clean(cur, article_id, cleaned, tokens, lemmas, ents)
                 count += 1
 

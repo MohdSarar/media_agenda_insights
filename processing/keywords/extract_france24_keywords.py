@@ -1,4 +1,5 @@
 from core.db import get_conn
+from core.config import CONFIG
 # processing/keywords/extract_france24_keywords.py
 
 import os
@@ -189,7 +190,7 @@ def compute_france24_keywords_daily() -> None:
                 if not counter:
                     continue
 
-                top10 = counter.most_common(10)
+                top10 = counter.most_common(int(CONFIG["keywords"]["top_n"]))
                 for rank, (word, count) in enumerate(top10, start=1):
                     rows_to_insert.append(
                         (date, source, lang, word, count, rank)

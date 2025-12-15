@@ -1,0 +1,13 @@
+# Central pipeline configuration (Point 6: config/code separation)
+# Modify thresholds here without touching Python code.
+
+topics:
+  default_n_topics: 10
+  min_docs: 10
+
+spikes:
+  z_threshold: 2.0
+  baseline_window: 3
+
+keywords:
+  top_n: 10

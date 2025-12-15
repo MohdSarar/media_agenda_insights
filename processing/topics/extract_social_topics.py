@@ -17,12 +17,14 @@ import nltk
 from nltk.corpus import stopwords as nltk_stopwords
 from typing import Any
 from core.db_types import PGConnection
+from core.config import CONFIG
 load_dotenv()
 logger = get_logger(__name__)
 DB_URL = os.getenv("DATABASE_URL")
 
 DAYS_BACK = int(os.getenv("SOCIAL_TOPICS_DAYS_BACK", "3"))
-DEFAULT_N_TOPICS = int(os.getenv("SOCIAL_TOPICS_N", "8"))
+DEFAULT_N_TOPICS = int(os.getenv("SOCIAL_TOPICS_N", str(CONFIG["topics"]["default_n_topics"])))
+MIN_DOCS = int(CONFIG["topics"]["min_docs"])
 TOP_TERMS = int(os.getenv("SOCIAL_TOPICS_TOP_TERMS", "12"))
 MIN_DF = int(os.getenv("SOCIAL_TOPICS_MIN_DF", "2"))
 MAX_DF = float(os.getenv("SOCIAL_TOPICS_MAX_DF", "0.80"))
@@ -216,7 +218,7 @@ def main() -> None:
 
         for (d, platform, source, lang), texts in groups.items():
             # NMF needs some minimum volume to be meaningful
-            if len(texts) < 10:
+            if len(texts) < MIN_DOCS:
                 continue
 
             stopset = LANG_STOPWORDS.get(lang, DEFAULT_STOPWORDS)

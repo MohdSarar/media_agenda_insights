@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import NMF
+from core.config import CONFIG
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
@@ -110,7 +111,7 @@ def already_computed_dates(cur: PGCursor) -> set[dt.date]:
 def extract_topics_for_date(
     date: dt.date,
     docs: Sequence[tuple[int, str]],
-    n_topics: int = 10,
+    n_topics: int | None = None,
     n_words: int = 8,
 ) -> list[dict[str, Any]]:
     """
@@ -119,6 +120,9 @@ def extract_topics_for_date(
       - topics_info : [{topic_id, keywords}]
       - doc_topic_ids : liste du topic principal pour chaque doc
     """
+    if n_topics is None:
+        n_topics = int(CONFIG["topics"]["default_n_topics"])
+
     if len(docs) == 0:
         return [], []
 

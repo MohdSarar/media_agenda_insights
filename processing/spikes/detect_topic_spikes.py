@@ -14,8 +14,10 @@ logger = get_logger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-BASELINE_WINDOW = 3   # ← YOUR CHOSEN BASELINE
-Z_THRESHOLD = 2.0     # typical anomaly threshold
+from core.config import CONFIG
+
+BASELINE_WINDOW = int(CONFIG["spikes"]["baseline_window"])
+Z_THRESHOLD = float(CONFIG["spikes"]["z_threshold"])
 
 def get_conn() -> PGConnection:
     return psycopg2.connect(DATABASE_URL)

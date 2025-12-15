@@ -17,3 +17,7 @@ scikit-learn
 numpy
 torch
 langdetect
+
+# dev
+pytest
+pytest-cov
