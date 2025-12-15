@@ -1,6 +1,7 @@
 from core.db import get_conn
 import os
 import datetime as dt
+from core.http import fetch_url_text
 from core.logging import get_logger
 
 
@@ -97,8 +98,10 @@ def ingest_france24_feeds() -> None:
                         continue
 
                     logger.info(f"[F24] Ingestion {label}/{feed_name} : {feed_url}")
-                    parsed = feedparser.parse(feed_url)
-
+                    
+                    xml = fetch_url_text(feed_url)
+                    parsed = feedparser.parse(xml)
+                    
                     if parsed.bozo:
                         logger.warning(
                             f"[F24] Problème de parsing pour {feed_url}: {parsed.bozo_exception}"

@@ -1,6 +1,7 @@
 from core.db import get_conn
 import os
 import datetime as dt
+from core.http import fetch_url_text
 from core.logging import get_logger
 
 
@@ -105,7 +106,8 @@ def ingest_tv_feeds() -> None:
 
                         logger.info(f"Ingestion feed {label}/{feed_name} : {feed_url}")
 
-                        parsed = feedparser.parse(feed_url)
+                        xml = fetch_url_text(feed_url)
+                        parsed = feedparser.parse(xml)
 
                         if parsed.bozo:
                             logger.warning(

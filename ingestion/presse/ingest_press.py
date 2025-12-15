@@ -2,6 +2,7 @@ from core.db import get_conn
 # ingestion/presse/ingest_press.py
 
 import os
+from core.http import fetch_url_text
 from core.logging import get_logger
 import time
 from datetime import datetime
@@ -165,7 +166,8 @@ def ingest_press() -> None:
 
                         logger.info("Lecture flux presse %s (%s) - %s", label, feed_name, feed_url)
 
-                        parsed = feedparser.parse(feed_url)
+                        xml = fetch_url_text(feed_url)
+                        parsed = feedparser.parse(xml)
 
                         if parsed.bozo:
                             logger.warning(

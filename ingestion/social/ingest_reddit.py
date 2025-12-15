@@ -11,6 +11,8 @@ import yaml
 import psycopg2
 from psycopg2.extras import Json
 from dotenv import load_dotenv
+from core.http import fetch_json
+
 
 
 from typing import Any, Mapping, Optional, TypedDict
@@ -64,10 +66,8 @@ def reddit_fetch(subreddit: str, mode: str = "new", limit: int = 100) -> JsonDic
     params = {"limit": int(limit)}
     headers = {"User-Agent": USER_AGENT}
 
-    r = requests.get(url, params=params, headers=headers, timeout=DEFAULT_TIMEOUT)
-    if r.status_code != 200:
-        raise RuntimeError(f"Reddit HTTP {r.status_code} for r/{subreddit}/{mode}: {r.text[:200]}")
-    return r.json()
+    data = fetch_json(url, params=params, headers=headers)
+    return data
 
 
 def normalize_post(child: Mapping[str, Any]) -> Optional[NormalizedRedditPost]:
