@@ -3,7 +3,7 @@ name: Run Media Agenda Pipeline
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "15 3 * * *" # tous les jours 03:15 UTC (à ajuster)
+    - cron: "15 3 * * *" # tous les jours 03:15 UTC
   push:
     branches: [ "main", "feature/tests-config-orchestration" ]
     paths:
@@ -14,19 +14,79 @@ on:
       - "requirements.txt"
       - ".github/workflows/pipeline.yml"
 
+env:
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+  STANZA_RESOURCES_DIR: ${{ github.workspace }}/.cache/stanza
+  NLTK_DATA: ${{ github.workspace }}/.cache/nltk
+  HF_HOME: ${{ github.workspace }}/.cache/huggingface
+
 jobs:
+  # =====================================================
+  # JOB 1: TEST & VALIDATION
+  # =====================================================
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Run sanity checks and tests
+        run: |
+          python -m compileall .
+          pytest -q
+
+      - name: Verify Docker build
+        run: |
+          docker build -t media-agenda-insights:ci .
+
+  # =====================================================
+  # JOB 2: DATABASE SETUP
+  # =====================================================
+  setup-database:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Init/Update DB schema (idempotent)
+        run: |
+          psql "$DATABASE_URL" -f infra/database_schema.sql
+
+      - name: Verify database tables
+        run: |
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name='articles_raw';"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name='keywords_daily';"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name='topics_daily';"
+
+  # =====================================================
+  # JOB 3: RUN PIPELINE
+  # =====================================================
   pipeline:
+    needs: setup-database
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
-
-      # (recommandé) éviter de re-télécharger à chaque run
-      STANZA_RESOURCES_DIR: ${{ github.workspace }}/.cache/stanza
-      NLTK_DATA: ${{ github.workspace }}/.cache/nltk
-      HF_HOME: ${{ github.workspace }}/.cache/huggingface
 
     steps:
       - name: Checkout
@@ -61,25 +121,42 @@ jobs:
           stanza.download("fr", model_dir=os.environ["STANZA_RESOURCES_DIR"], verbose=False)
           PY
 
-      - name: Init/Update DB schema (idempotent)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          psql "$DATABASE_URL" -f infra/database_schema.sql
-
-      - name: Run pipeline (modules)
+      - name: Run ingestion
         run: |
           set -e
           python -m ingestion.tv.ingest_tv
           python -m ingestion.presse.ingest_press
           python -m ingestion.tv.ingest_france24 || true
           python -m ingestion.social.ingest_reddit || true
+
+      - name: Run NLP processing
+        run: |
+          set -e
           python -m processing.nlp.process_articles
           python -m processing.nlp.process_france24_articles || true
+          python -m processing.nlp.process_social_posts || true
+
+      - name: Extract keywords
+        run: |
+          set -e
           python -m processing.keywords.extract_keywords
           python -m processing.keywords.extract_france24_keywords || true
+          python -m processing.keywords.extract_social_keywords || true
+
+      - name: Extract topics
+        run: |
+          set -e
           python -m processing.topics.extract_topics
           python -m processing.topics.extract_france24_topics || true
+          python -m processing.topics.extract_social_topics || true
+
+      - name: Run analytics
+        run: |
+          python -m processing.bias.analyze_topic_bias || true
+          python -m processing.spikes.detect_topic_spikes || true
+          python -m processing.lifetime.keyword_lifetime || true
+          python -m processing.lifetime.topic_lifetime || true
+          python -m processing.lifetime.theme_lifetime || true
 
       - name: Proof of execution (DB counts)
         run: |
@@ -89,7 +166,7 @@ jobs:
           psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM keywords_daily;"
           psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM topics_daily;"
 
-      - name: Upload logs (optional)
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -97,3 +174,53 @@ jobs:
           path: |
             **/*.log
           if-no-files-found: ignore
+
+  # =====================================================
+  # JOB 4: POST-PIPELINE VALIDATION
+  # =====================================================
+  validate:
+    needs: pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Dashboard import smoke test
+        run: |
+          python - <<'PY'
+          import dashboard.app
+          print("✅ Streamlit app imports correctly")
+          PY
+
+  # =====================================================
+  # JOB 5: NOTIFICATIONS
+  # =====================================================
+  notify:
+    needs: [test, setup-database, pipeline, validate]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Send success notification
+        if: ${{ needs.test.result == 'success' && needs.pipeline.result == 'success' && needs.validate.result == 'success' }}
+        run: |
+          echo "✅ Pipeline completed successfully!"
+
+      - name: Send failure notification
+        if: ${{ needs.test.result == 'failure' || needs.setup-database.result == 'failure' || needs.pipeline.result == 'failure' || needs.validate.result == 'failure' }}
+        run: |
+          echo "❌ Pipeline FAILED!"
+          echo "Failed job: test=${{ needs.test.result }}, db=${{ needs.setup-database.result }}, pipeline=${{ needs.pipeline.result }}, validate=${{ needs.validate.result }}"
