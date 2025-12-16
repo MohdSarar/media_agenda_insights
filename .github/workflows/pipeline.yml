@@ -44,6 +44,11 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt
 
+      - name: Prepare log files
+        run: |
+          mkdir -p logs
+          echo "Run started at $(date -u)" > logs/pipeline.log
+
       - name: Run sanity checks and tests
         run: |
           python -m compileall .
@@ -103,6 +108,11 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt
 
+      - name: Prepare log files
+        run: |
+          mkdir -p logs
+          echo "Run started at $(date -u)" > logs/pipeline.log
+
       - name: Cache NLP assets (stanza/nltk/hf)
         uses: actions/cache@v4
         with:
@@ -121,42 +131,37 @@ jobs:
           stanza.download("fr", model_dir=os.environ["STANZA_RESOURCES_DIR"], verbose=False)
           PY
 
-      - name: Run ingestion
+      - name: Run pipeline (modules)
+        shell: bash
         run: |
-          set -e
-          python -m ingestion.tv.ingest_tv
-          python -m ingestion.presse.ingest_press
-          python -m ingestion.tv.ingest_france24 || true
-          python -m ingestion.social.ingest_reddit || true
-
-      - name: Run NLP processing
-        run: |
-          set -e
-          python -m processing.nlp.process_articles
-          python -m processing.nlp.process_france24_articles || true
-          python -m processing.nlp.process_social_posts || true
-
-      - name: Extract keywords
-        run: |
-          set -e
-          python -m processing.keywords.extract_keywords
-          python -m processing.keywords.extract_france24_keywords || true
-          python -m processing.keywords.extract_social_keywords || true
-
-      - name: Extract topics
-        run: |
-          set -e
-          python -m processing.topics.extract_topics
-          python -m processing.topics.extract_france24_topics || true
-          python -m processing.topics.extract_social_topics || true
-
-      - name: Run analytics
-        run: |
-          python -m processing.bias.analyze_topic_bias || true
-          python -m processing.spikes.detect_topic_spikes || true
-          python -m processing.lifetime.keyword_lifetime || true
-          python -m processing.lifetime.topic_lifetime || true
-          python -m processing.lifetime.theme_lifetime || true
+          set -euo pipefail
+          run_step () {
+            local label="$1"; shift
+            echo "" | tee -a logs/pipeline.log
+            echo "===== ${label} =====" | tee -a logs/pipeline.log
+            # keep exit code even with tee
+            ("$@" 2>&1 | tee -a logs/pipeline.log)
+            return ${PIPESTATUS[0]}
+          }
+          run_step "ingestion tv"        python -m ingestion.tv.ingest_tv
+          run_step "ingestion press"     python -m ingestion.presse.ingest_press
+          run_step "ingestion f24"       python -m ingestion.tv.ingest_france24 || true
+          run_step "ingestion reddit"    python -m ingestion.social.ingest_reddit || true
+          run_step "nlp articles"        python -m processing.nlp.process_articles
+          run_step "nlp f24"             python -m processing.nlp.process_france24_articles || true
+          run_step "nlp social"          python -m processing.nlp.process_social_posts || true
+          run_step "keywords global"     python -m processing.keywords.extract_keywords
+          run_step "keywords f24"        python -m processing.keywords.extract_france24_keywords || true
+          run_step "keywords social"     python -m processing.keywords.extract_social_keywords || true
+          run_step "topics global"       python -m processing.topics.extract_topics
+          run_step "topics f24"          python -m processing.topics.extract_france24_topics || true
+          run_step "topics social"       python -m processing.topics.extract_social_topics || true
+          run_step "bias"                python -m processing.bias.analyze_topic_bias || true
+          run_step "spikes"              python -m processing.spikes.detect_topic_spikes || true
+          run_step "lifetime keywords"   python -m processing.lifetime.keyword_lifetime || true
+          run_step "lifetime topics"     python -m processing.lifetime.topic_lifetime || true
+          run_step "lifetime themes"     python -m processing.lifetime.theme_lifetime || true
+          echo "Run finished at $(date -u)" | tee -a logs/pipeline.log
 
       - name: Proof of execution (DB counts)
         run: |
@@ -171,8 +176,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pipeline-run-${{ github.run_id }}
-          path: |
-            **/*.log
+          path: logs/
           if-no-files-found: ignore
 
   # =====================================================
@@ -218,9 +222,11 @@ jobs:
         if: ${{ needs.test.result == 'success' && needs.pipeline.result == 'success' && needs.validate.result == 'success' }}
         run: |
           echo "✅ Pipeline completed successfully!"
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Send failure notification
         if: ${{ needs.test.result == 'failure' || needs.setup-database.result == 'failure' || needs.pipeline.result == 'failure' || needs.validate.result == 'failure' }}
         run: |
           echo "❌ Pipeline FAILED!"
           echo "Failed job: test=${{ needs.test.result }}, db=${{ needs.setup-database.result }}, pipeline=${{ needs.pipeline.result }}, validate=${{ needs.validate.result }}"
+          echo "Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
