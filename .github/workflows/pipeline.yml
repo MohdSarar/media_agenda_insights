@@ -1,0 +1,99 @@
+name: Run Media Agenda Pipeline
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "15 3 * * *" # tous les jours 03:15 UTC (à ajuster)
+  push:
+    branches: [ "main" ]
+    paths:
+      - "ingestion/**"
+      - "processing/**"
+      - "infra/**"
+      - "core/**"
+      - "requirements.txt"
+      - ".github/workflows/pipeline.yml"
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+
+      # (recommandé) éviter de re-télécharger à chaque run
+      STANZA_RESOURCES_DIR: ${{ github.workspace }}/.cache/stanza
+      NLTK_DATA: ${{ github.workspace }}/.cache/nltk
+      HF_HOME: ${{ github.workspace }}/.cache/huggingface
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Cache NLP assets (stanza/nltk/hf)
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/stanza
+            .cache/nltk
+            .cache/huggingface
+          key: nlp-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Download NLP models (idempotent)
+        run: |
+          python -m nltk.downloader -d "$NLTK_DATA" stopwords
+          python -m spacy download fr_core_news_sm
+          python - <<'PY'
+          import stanza, os
+          stanza.download("fr", model_dir=os.environ["STANZA_RESOURCES_DIR"], verbose=False)
+          PY
+
+      - name: Init/Update DB schema (idempotent)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql "$DATABASE_URL" -f infra/database_schema.sql
+
+      - name: Run pipeline (modules)
+        run: |
+          set -e
+          python -m ingestion.tv.ingest_tv
+          python -m ingestion.presse.ingest_press
+          python -m ingestion.tv.ingest_france24 || true
+          python -m ingestion.social.ingest_reddit || true
+          python -m processing.nlp.process_articles
+          python -m processing.nlp.process_france24_articles || true
+          python -m processing.keywords.extract_keywords
+          python -m processing.keywords.extract_france24_keywords || true
+          python -m processing.topics.extract_topics
+          python -m processing.topics.extract_france24_topics || true
+
+      - name: Proof of execution (DB counts)
+        run: |
+          psql "$DATABASE_URL" -c "\dt"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM articles_raw;"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM articles_clean;"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM keywords_daily;"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM topics_daily;"
+
+      - name: Upload logs (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-run-${{ github.run_id }}
+          path: |
+            **/*.log
+          if-no-files-found: ignore
