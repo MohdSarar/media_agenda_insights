@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: "15 3 * * *" # tous les jours 03:15 UTC (à ajuster)
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feature/tests-config-orchestration" ]
     paths:
       - "ingestion/**"
       - "processing/**"
