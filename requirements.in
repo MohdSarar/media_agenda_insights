@@ -21,3 +21,5 @@ langdetect
 # dev
 pytest
 pytest-cov
+tenacity>=8.2.3
+

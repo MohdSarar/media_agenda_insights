@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.pkl
+*.pyc
 
 # Logs
 *.log
@@ -29,3 +30,7 @@ venv/
 *.jsonl
 data/
 logs/
+
+# NLP models / local caches
+.stanza/
+.nltk_data/
