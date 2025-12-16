@@ -263,7 +263,12 @@ def ingest_press() -> None:
                             total_inserted += 1
 
             conn.commit()
-            logger.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted, "failed_feeds=%s", failed_feeds)
+            logger.info(
+                "Ingestion presse terminée. Nouveaux articles insérés : %d",
+                total_inserted,
+                extra={"failed_feeds": failed_feeds},
+            )
+
 
         except Exception as e:
             conn.rollback()

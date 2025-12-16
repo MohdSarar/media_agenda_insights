@@ -189,7 +189,14 @@ def main() -> None:
             source_key = name if name else subreddit
             logger.info("Fetching Reddit: r/%s (%s, limit=%s)", subreddit, mode, limit)
 
-            data = reddit_fetch(subreddit=subreddit, mode=mode, limit=limit)
+            try:
+                data = reddit_fetch(subreddit=subreddit, mode=mode, limit=limit)
+            except requests.exceptions.HTTPError as e:
+                status = getattr(e.response, "status_code", None)
+                if status in (401, 403):
+                    logger.warning("Reddit blocked (skip)", extra={"status_code": status})
+                    return
+                raise
             children = (((data or {}).get("data") or {}).get("children")) or []
 
             posts = []
