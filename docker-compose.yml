@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: media_agenda
+      POSTGRES_USER: media
+      POSTGRES_PASSWORD: media
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U media -d media_agenda"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://media:media@db:5432/media_agenda
+    volumes:
+      - .:/app
+    ports:
+      - "8501:8501"
+    command: >
+      bash -lc "streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501"
+    profiles: ["dashboard"]
+
+
+  pipeline:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://media:media@db:5432/media_agenda
+    volumes:
+      - .:/app
+    command: ["bash", "-lc", "psql $${DATABASE_URL} -f infra/database_schema.sql && bash scripts/pipeline_docker.sh"]
+    profiles: ["pipeline"]
+
+volumes:
+  pgdata:

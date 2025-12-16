@@ -67,13 +67,8 @@ def log_retry(retry_state: RetryCallState) -> None:
 
 
 def fetch_url_text(url: str, *, session: Optional[requests.Session] = None) -> str:
-    """
-    Fetch HTTP GET with retries + exponential backoff.
-    Returns response.text if OK (2xx), otherwise raises.
-    """
     cfg = _load_http_config()
     sess = session or requests.Session()
-
     headers = {"User-Agent": cfg.user_agent}
 
     @retry(
@@ -81,25 +76,32 @@ def fetch_url_text(url: str, *, session: Optional[requests.Session] = None) -> s
         stop=stop_after_attempt(cfg.max_attempts),
         wait=wait_exponential(min=cfg.backoff_min_seconds, max=cfg.backoff_max_seconds),
         retry=(
-            retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.Timeout))
+            retry_if_exception_type((requests.exceptions.Timeout, requests.exceptions.ConnectionError))
             | retry_if_result(_should_retry_response)
         ),
         before_sleep=log_retry,
-
-
     )
     def _do_get() -> requests.Response:
         resp = sess.get(url, headers=headers, timeout=cfg.timeout_seconds)
-        # Tenacity "retry_if_result" gère les codes à retry
-        # Ici on raise pour les autres codes non-2xx (ex: 404)
-        if resp.status_code >= 400 and resp.status_code not in cfg.retry_status_codes:
-            resp.raise_for_status()
+        # 404/410: feed absent => on skip (pas d'exception)
+        if resp.status_code in (404, 410):
+            return resp
+        # 4xx hors 429: non récupérable => on retourne pour skip
+        if 400 <= resp.status_code < 500 and resp.status_code != 429:
+            return resp
+        # 5xx/429: _should_retry_response va déclencher retry
         return resp
 
     resp = _do_get()
-    # Si status code est dans la liste retry, la retry policy aura déjà relancé.
+
+    # Skip propre sur 4xx non-retryables
+    if resp.status_code in (404, 410) or (400 <= resp.status_code < 500 and resp.status_code != 429):
+        logger.warning("HTTP client error (skip)", extra={"url": url, "status_code": resp.status_code})
+        return ""
+
     resp.raise_for_status()
     return resp.text
+
 
 
 from typing import Any, Optional, Mapping
@@ -127,7 +129,7 @@ def fetch_json(
         stop=stop_after_attempt(cfg.max_attempts),
         wait=wait_exponential(min=cfg.backoff_min_seconds, max=cfg.backoff_max_seconds),
         retry=(
-            retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.Timeout))
+            retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.ConnectionError, requests.exceptions.Timeout))
             | retry_if_result(_should_retry_response)
         ),
         before_sleep=log_retry,

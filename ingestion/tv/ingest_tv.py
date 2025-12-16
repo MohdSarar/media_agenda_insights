@@ -106,7 +106,12 @@ def ingest_tv_feeds() -> None:
 
                         logger.info(f"Ingestion feed {label}/{feed_name} : {feed_url}")
 
-                        xml = fetch_url_text(feed_url)
+                        try:
+                            xml = fetch_url_text(feed_url)
+                        except Exception as e:
+                            logger.error("Feed TV skipped (fetch failed): %s | %s", feed_url, str(e))
+                            continue
+
                         parsed = feedparser.parse(xml)
 
                         if parsed.bozo:

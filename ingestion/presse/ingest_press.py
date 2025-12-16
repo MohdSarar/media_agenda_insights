@@ -152,7 +152,8 @@ def ingest_press() -> None:
                     if not isinstance(feeds, list):
                         logger.warning("Section 'feeds' invalide pour %s, ignorée.", source_key)
                         continue
-
+                    failed_feeds = 0
+            
                     for feed in feeds:
                         feed_name = feed.get("name", "default")
                         feed_url = feed.get("url")
@@ -166,7 +167,22 @@ def ingest_press() -> None:
 
                         logger.info("Lecture flux presse %s (%s) - %s", label, feed_name, feed_url)
 
-                        xml = fetch_url_text(feed_url)
+                        try:
+                            xml = fetch_url_text(feed_url)
+                            if not xml:
+                                logger.warning("Feed vide, ignoré: %s", feed_url)
+                                continue
+
+                        except Exception as e:
+                            logger.error(
+                                "Feed presse skipped (fetch failed): %s | %s",
+                                feed_url,
+                                str(e),
+                            )
+                            failed_feeds += 1
+
+                            continue
+
                         parsed = feedparser.parse(xml)
 
                         if parsed.bozo:
@@ -247,7 +263,7 @@ def ingest_press() -> None:
                             total_inserted += 1
 
             conn.commit()
-            logger.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted)
+            logger.info("Ingestion presse terminée. Nouveaux articles insérés : %d", total_inserted, "failed_feeds=%s", failed_feeds)
 
         except Exception as e:
             conn.rollback()
