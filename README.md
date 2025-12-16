@@ -424,7 +424,7 @@ Multi-layered cleanup pipeline:
 | Full HTML article scraping | 🔜 Planned |
 | Social media ingestion (Reddit, Mastodon) | 🔜 Planned |
 | LLM-based topic labeling | 🔜 Planned |
-| Docker containerization | 🔜 Planned |
+| Docker containerization | ✅ Done |
 
 
 
