@@ -204,10 +204,8 @@ jobs:
 
       - name: Dashboard import smoke test
         run: |
-          python - <<'PY'
-          import dashboard.app
-          print("✅ Streamlit app imports correctly")
-          PY
+          python -c "import dashboard.app; print('✅ Streamlit app imports correctly')"
+
 
   # =====================================================
   # JOB 5: NOTIFICATIONS
