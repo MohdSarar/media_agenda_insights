@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 import streamlit as st
 
 # Charger les variables d'environnement (DATABASE_URL)
-load_dotenv()
-DB_URL = os.getenv("DATABASE_URL")
+#load_dotenv()
+#DB_URL = os.getenv("DATABASE_URL")
 
 # Pour que les colonnes JSONB soient bien interprétées par psycopg2/pandas
 register_default_jsonb(loads=lambda x: x)
@@ -21,22 +21,72 @@ register_default_jsonb(loads=lambda x: x)
 # ---------- Connexion DB ----------
 
 
+# dashboard/data_access.py
+
+import os
+from datetime import date
+from typing import List, Optional
+
+import pandas as pd
+import psycopg2
+from psycopg2.extras import register_default_jsonb
+from dotenv import load_dotenv
+import streamlit as st
+
+# Charge .env en local (si présent)
+load_dotenv()
+
+# Pour que les colonnes JSONB soient bien interprétées par psycopg2/pandas
+register_default_jsonb(loads=lambda x: x)
+
+
+def _get_db_url() -> str | None:
+    """
+    Retourne DATABASE_URL depuis:
+    1) Streamlit Cloud secrets (st.secrets)
+    2) Variables d'environnement (local / CI)
+    """
+    # Streamlit secrets (Cloud)
+    try:
+        if "DATABASE_URL" in st.secrets:
+            val = st.secrets["DATABASE_URL"]
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    except Exception:
+        pass
+
+    # Env var (local / GitHub Actions / etc.)
+    val = os.getenv("DATABASE_URL")
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+
+    return None
+
+
+# ---------- Connexion DB ----------
+
 def get_connection():
     """
     Connexion PostgreSQL réutilisée dans la session Streamlit.
     Si la connexion est fermée (timeout / rerun), on la recrée.
     """
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL non défini dans .env")
+    db_url = _get_db_url()
+    if not db_url:
+        raise RuntimeError(
+            "DATABASE_URL non défini. "
+            "Local: définir DATABASE_URL dans .env. "
+            "Streamlit Cloud: Manage app → Settings → Secrets → DATABASE_URL"
+        )
 
     conn = st.session_state.get("_db_conn")
 
     # psycopg2: closed == 0 => ouverte ; closed != 0 => fermée
     if conn is None or getattr(conn, "closed", 1) != 0:
-        conn = psycopg2.connect(DB_URL)
+        conn = psycopg2.connect(db_url)
         st.session_state["_db_conn"] = conn
 
     return conn
+
 
 
 
