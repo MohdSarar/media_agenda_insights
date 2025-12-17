@@ -2,7 +2,9 @@
 
 **Automated Media Monitoring & Narrative Analysis**
 
+<p align="center">
 [![Run Media Agenda Pipeline](https://github.com/MohdSarar/media_agenda_insights/actions/workflows/pipeline.yml/badge.svg?branch=main)](https://github.com/MohdSarar/media_agenda_insights/actions/workflows/pipeline.yml)
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" />
