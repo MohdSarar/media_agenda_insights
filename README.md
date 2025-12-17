@@ -408,6 +408,7 @@ Multi-layered cleanup pipeline:
 
 | Feature | Status |
 |---------|--------|
+
 | Modular ETL pipeline (TV & press RSS) | ✅ Done |
 | PostgreSQL schema with indexed analytics tables | ✅ Done |
 | NLP pipeline (Stanza + spaCy, multilingual-ready) | ✅ Done |
@@ -425,7 +426,6 @@ Multi-layered cleanup pipeline:
 | Social media ingestion (Reddit, Mastodon) | 🔜 Planned |
 | LLM-based topic labeling | 🔜 Planned |
 | Docker containerization | ✅ Done |
-
 
 
 ---
