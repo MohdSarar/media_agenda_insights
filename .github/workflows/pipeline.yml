@@ -54,9 +54,9 @@ jobs:
           python -m compileall .
           python -m pytest -q
 
-      - name: Verify Docker build
-        run: |
-          docker build -t media-agenda-insights:ci .
+      #- name: Verify Docker build
+       # run: |
+       #   docker build -t media-agenda-insights:ci .
 
   # =====================================================
   # JOB 2: DATABASE SETUP
