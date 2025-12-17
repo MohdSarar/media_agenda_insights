@@ -1,11 +1,18 @@
 # dashboard/app.py
 
+import sys
+from pathlib import Path
+
+# Add repo root to PYTHONPATH so `import dashboard...` works on Streamlit Cloud
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
 import streamlit as st
 
 # ⚠️ Importer les vues depuis le sous-dossier "views" (même dossier que app.py)
 from dashboard.views import overview, compare, topics, narratives, analytics, france24_multilingue, social_observable
-
-
 
 
 def main():
