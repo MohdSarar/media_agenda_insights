@@ -18,11 +18,6 @@ import streamlit as st
 register_default_jsonb(loads=lambda x: x)
 
 
-# ---------- Connexion DB ----------
-
-
-# dashboard/data_access.py
-
 import os
 from datetime import date
 from typing import List, Optional
@@ -103,7 +98,7 @@ def _read_table(table_name: str, columns: str = "*") -> pd.DataFrame:
 
 # ---------- Dates & sources ----------
 
-@st.cache_data
+@st.cache_data(ttl=3600)  # 1h
 def get_available_dates() -> List[date]:
     """
     Retourne toutes les dates disponibles (union) provenant :
@@ -147,7 +142,7 @@ def get_available_dates() -> List[date]:
     return sorted(sorted(set(dates)))
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)  # 1h
 def get_sources(media_type: Optional[str] = None) -> List[str]:
     """
     Retourne la liste des sources disponibles à partir de articles_raw.
@@ -185,7 +180,7 @@ def get_sources(media_type: Optional[str] = None) -> List[str]:
 
 # ---------- Chargement des mots-clés ----------
 
-@st.cache_data
+@st.cache_data(ttl=900)  # 15min
 def load_keywords_for_day(
     selected_date: date,
     selected_source: str = "ALL",
@@ -217,7 +212,7 @@ def load_keywords_for_day(
     return df
 
 
-@st.cache_data
+@st.cache_data(ttl=900)  # 15min
 def load_keywords_range(
     start_date: date,
     end_date: date,
@@ -259,7 +254,7 @@ def load_keywords_range(
     return df
 
 
-@st.cache_data
+@st.cache_data(ttl=1800)  # 30min
 def load_lemmas_range(
     start_date: date,
     end_date: date,
@@ -311,7 +306,7 @@ def load_lemmas_range(
 
 # ---------- Chargement des topics ----------
 
-@st.cache_data
+@st.cache_data(ttl=900)  # 15min
 def load_topics_for_day(selected_date: date, only_tv: bool = True) -> pd.DataFrame:
     """
     Sujets pour une date donnée (topics_daily).
@@ -334,7 +329,7 @@ def load_topics_for_day(selected_date: date, only_tv: bool = True) -> pd.DataFra
     return df
 
 
-@st.cache_data
+@st.cache_data(ttl=900)  # 15min
 def load_topics_timeseries(
     start_date: date,
     end_date: date,
@@ -369,7 +364,7 @@ def load_topics_timeseries(
 
 # ---------- Tendance d'un mot-clé ----------
 
-@st.cache_data
+@st.cache_data(ttl=900)  # 15min
 def load_word_trend(
     word: str,
     start_date: date,
@@ -411,7 +406,7 @@ def load_word_trend(
 
 
 
-@st.cache_data
+@st.cache_data(ttl=1800)  # 30min
 def load_narrative_clusters() -> pd.DataFrame:
     """
     Charge tous les clusters de narratifs (narratives_clusters).
@@ -428,7 +423,7 @@ def load_narrative_clusters() -> pd.DataFrame:
     return df
 
 
-@st.cache_data
+@st.cache_data(ttl=1800)  # 30min
 def load_narrative_distribution_by_source() -> pd.DataFrame:
     """
     Distribution des narratifs par chaîne :
