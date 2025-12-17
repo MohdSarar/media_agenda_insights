@@ -3,7 +3,7 @@
 import streamlit as st
 
 # ⚠️ Importer les vues depuis le sous-dossier "views" (même dossier que app.py)
-from views import overview, compare, topics, narratives, analytics, france24_multilingue, social_observable
+from dashboard.views import overview, compare, topics, narratives, analytics, france24_multilingue, social_observable
 
 
 
