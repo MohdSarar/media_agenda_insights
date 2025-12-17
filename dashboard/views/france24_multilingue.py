@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 
-from data_access import get_connection
+from dashboard.data_access import get_connection
 
 
 def load_df(sql: str, params=None) -> pd.DataFrame:

@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 
-from data_access import get_connection
+from dashboard.data_access import get_connection
 
 
 def load_df(query: str, params=None) -> pd.DataFrame:

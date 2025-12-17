@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
-from data_access import (
+from dashboard.data_access import (
     get_available_dates,
     get_sources,
     load_keywords_for_day,
