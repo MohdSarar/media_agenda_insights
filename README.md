@@ -408,19 +408,25 @@ Multi-layered cleanup pipeline:
 
 | Feature | Status |
 |---------|--------|
-| Modular ETL pipeline | ✅ Done |
-| PostgreSQL schema with indexes | ✅ Done |
-| NLP pipeline (Stanza + spaCy) | ✅ Done |
-| Topic modeling (NMF) | ✅ Done |
+
+| Modular ETL pipeline (TV & press RSS) | ✅ Done |
+| PostgreSQL schema with indexed analytics tables | ✅ Done |
+| NLP pipeline (Stanza + spaCy, multilingual-ready) | ✅ Done |
+| Keyword extraction (TF-IDF + advanced filtering) | ✅ Done |
+| Topic modeling (NMF, per-source & per-language) | ✅ Done |
 | Narrative clustering (Sentence-BERT + KMeans) | ✅ Done |
-| Streamlit dashboard | ✅ Done |
+| Media bias quantification (topic-level) | ✅ Done |
+| Topic spike detection (time-series anomaly) | ✅ Done |
+| Keyword / Topic / Theme lifetime analysis | ✅ Done |
+| **Multilingual media analysis (France 24 FR / EN / ES / AR)** | ✅ Done |
+| **Isolated analytics pipeline for international media** | ✅ Done |
+| Streamlit analytical dashboard (modular views) | ✅ Done |
 | Airflow / Prefect ready | ✅ Done |
 | Full HTML article scraping | 🔜 Planned |
-| Social media (Reddit, Mastodon) | 🔜 Planned |
+| Social media ingestion (Reddit, Mastodon) | 🔜 Planned |
 | LLM-based topic labeling | 🔜 Planned |
-| Media bias quantification | 🔜 Planned |
-| Spike detection | 🔜 Planned |
-| Docker containerization | 🔜 Planned |
+| Docker containerization | ✅ Done |
+
 
 ---
 

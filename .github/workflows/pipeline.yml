@@ -1,0 +1,230 @@
+name: Run Media Agenda Pipeline
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "15 3 * * *" # tous les jours 03:15 UTC
+  push:
+    branches: [ "main", "feature/tests-config-orchestration" ]
+    paths:
+      - "ingestion/**"
+      - "processing/**"
+      - "infra/**"
+      - "core/**"
+      - "requirements.txt"
+      - ".github/workflows/pipeline.yml"
+
+env:
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+  STANZA_RESOURCES_DIR: ${{ github.workspace }}/.cache/stanza
+  NLTK_DATA: ${{ github.workspace }}/.cache/nltk
+  HF_HOME: ${{ github.workspace }}/.cache/huggingface
+
+jobs:
+  # =====================================================
+  # JOB 1: TEST & VALIDATION
+  # =====================================================
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Prepare log files
+        run: |
+          mkdir -p logs
+          echo "Run started at $(date -u)" > logs/pipeline.log
+
+      - name: Run sanity checks and tests
+        run: |
+          python -m compileall .
+          python -m pytest -q
+
+      #- name: Verify Docker build
+       # run: |
+       #   docker build -t media-agenda-insights:ci .
+
+  # =====================================================
+  # JOB 2: DATABASE SETUP
+  # =====================================================
+  setup-database:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Init/Update DB schema (idempotent)
+        run: |
+          psql "$DATABASE_URL" -f infra/database_schema.sql
+
+      - name: Verify database tables
+        run: |
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name='articles_raw';"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name='keywords_daily';"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name='topics_daily';"
+
+  # =====================================================
+  # JOB 3: RUN PIPELINE
+  # =====================================================
+  pipeline:
+    needs: setup-database
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Prepare log files
+        run: |
+          mkdir -p logs
+          echo "Run started at $(date -u)" > logs/pipeline.log
+
+      - name: Cache NLP assets (stanza/nltk/hf)
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/stanza
+            .cache/nltk
+            .cache/huggingface
+          key: nlp-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Download NLP models (idempotent)
+        run: |
+          python -m nltk.downloader -d "$NLTK_DATA" stopwords
+          python -m spacy download fr_core_news_sm
+          python - <<'PY'
+          import stanza, os
+          stanza.download("fr", model_dir=os.environ["STANZA_RESOURCES_DIR"], verbose=False)
+          PY
+
+      - name: Run pipeline (modules)
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_step () {
+            local label="$1"; shift
+            echo "" | tee -a logs/pipeline.log
+            echo "===== ${label} =====" | tee -a logs/pipeline.log
+            # keep exit code even with tee
+            ("$@" 2>&1 | tee -a logs/pipeline.log)
+            return ${PIPESTATUS[0]}
+          }
+          run_step "ingestion tv"        python -m ingestion.tv.ingest_tv
+          run_step "ingestion press"     python -m ingestion.presse.ingest_press
+          run_step "ingestion f24"       python -m ingestion.tv.ingest_france24 || true
+          run_step "ingestion reddit"    python -m ingestion.social.ingest_reddit || true
+          run_step "nlp articles"        python -m processing.nlp.process_articles
+          run_step "nlp f24"             python -m processing.nlp.process_france24_articles || true
+          run_step "nlp social"          python -m processing.nlp.process_social_posts || true
+          run_step "keywords global"     python -m processing.keywords.extract_keywords
+          run_step "keywords f24"        python -m processing.keywords.extract_france24_keywords || true
+          run_step "keywords social"     python -m processing.keywords.extract_social_keywords || true
+          run_step "topics global"       python -m processing.topics.extract_topics
+          run_step "topics f24"          python -m processing.topics.extract_france24_topics || true
+          run_step "topics social"       python -m processing.topics.extract_social_topics || true
+          run_step "bias"                python -m processing.bias.analyze_topic_bias || true
+          run_step "spikes"              python -m processing.spikes.detect_topic_spikes || true
+          run_step "lifetime keywords"   python -m processing.lifetime.keyword_lifetime || true
+          run_step "lifetime topics"     python -m processing.lifetime.topic_lifetime || true
+          run_step "lifetime themes"     python -m processing.lifetime.theme_lifetime || true
+          echo "Run finished at $(date -u)" | tee -a logs/pipeline.log
+
+      - name: Proof of execution (DB counts)
+        run: |
+          psql "$DATABASE_URL" -c "\dt"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM articles_raw;"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM articles_clean;"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM keywords_daily;"
+          psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM topics_daily;"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-run-${{ github.run_id }}
+          path: logs/
+          if-no-files-found: ignore
+
+  # =====================================================
+  # JOB 4: POST-PIPELINE VALIDATION
+  # =====================================================
+  validate:
+    needs: pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Dashboard import smoke test
+        run: |
+          python -c "import dashboard.app; print('✅ Streamlit app imports correctly')"
+ 
+
+  # =====================================================
+  # JOB 5: NOTIFICATIONS
+  # =====================================================
+  notify:
+    needs: [test, setup-database, pipeline, validate]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Send success notification
+        if: ${{ needs.test.result == 'success' && needs.pipeline.result == 'success' && needs.validate.result == 'success' }}
+        run: |
+          echo "✅ Pipeline completed successfully!"
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Send failure notification
+        if: ${{ needs.test.result == 'failure' || needs.setup-database.result == 'failure' || needs.pipeline.result == 'failure' || needs.validate.result == 'failure' }}
+        run: |
+          echo "❌ Pipeline FAILED!"
+          echo "Failed job: test=${{ needs.test.result }}, db=${{ needs.setup-database.result }}, pipeline=${{ needs.pipeline.result }}, validate=${{ needs.validate.result }}"
+          echo "Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

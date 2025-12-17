@@ -1,0 +1,21 @@
+# Central pipeline configuration (Point 6: config/code separation)
+# Modify thresholds here without touching Python code.
+
+topics:
+  default_n_topics: 10
+  min_docs: 10
+
+spikes:
+  z_threshold: 2.0
+  baseline_window: 3
+
+keywords:
+  top_n: 10
+
+http:
+  timeout_seconds: 15
+  max_attempts: 5
+  backoff_min_seconds: 1
+  backoff_max_seconds: 20
+  retry_status_codes: [429, 500, 502, 503, 504]
+  user_agent: "MediaAgendaInsights/1.0 (+https://github.com/...)"

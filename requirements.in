@@ -1,0 +1,25 @@
+psycopg2-binary
+python-dotenv
+stanza
+spacy
+beautifulsoup4
+nltk
+feedparser
+requests
+pandas
+streamlit
+matplotlib
+seaborn
+altair
+plotly
+sentence-transformers
+scikit-learn
+numpy
+torch
+langdetect
+
+# dev
+pytest
+pytest-cov
+tenacity>=8.2.3
+

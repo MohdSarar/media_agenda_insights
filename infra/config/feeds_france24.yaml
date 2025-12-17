@@ -1,0 +1,31 @@
+france24_fr:
+  label: "France 24 - Français"
+  lang: "fr"
+  media_type: "tv"
+  feeds:
+    - name: "top_stories"
+      url: "https://www.france24.com/fr/rss"
+
+france24_en:
+  label: "France 24 - English"
+  lang: "en"
+  media_type: "tv"
+  feeds:
+    - name: "top_stories"
+      url: "https://www.france24.com/en/rss"
+
+france24_es:
+  label: "France 24 - Español"
+  lang: "es"
+  media_type: "tv"
+  feeds:
+    - name: "top_stories"
+      url: "https://www.france24.com/es/rss"
+
+france24_ar:
+  label: "France 24 - العربية"
+  lang: "ar"
+  media_type: "tv"
+  feeds:
+    - name: "top_stories"
+      url: "https://www.france24.com/ar/rss"

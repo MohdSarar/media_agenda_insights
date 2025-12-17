@@ -1,5 +1,6 @@
+from core.db import get_conn
 import os
-import logging
+from core.logging import get_logger
 from collections import defaultdict, Counter
 
 import psycopg2
@@ -8,20 +9,18 @@ from dotenv import load_dotenv
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import NMF
+from core.config import CONFIG
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
-
+logger = get_logger(__name__)
 import spacy
 from spacy.lang.fr.stop_words import STOP_WORDS as SPACY_STOP
 from nltk.corpus import stopwords
 
+from typing import Any, Iterable, Sequence
+import datetime as dt
+from core.db_types import PGConnection, PGCursor
 
 
 NLTK_STOP = set(stopwords.words("french"))
@@ -46,11 +45,9 @@ CUSTOM_STOPWORDS = {
 USELESS_WORDS = SPACY_STOP | NLTK_STOP | CUSTOM_STOPWORDS
 
 
-def get_conn():
-    return psycopg2.connect(DB_URL)
 
 
-def clean_lemmas(lemmas):
+def clean_lemmas(lemmas: Sequence[str]) -> list[str]:
     cleaned = []
     for l in lemmas:
         if not l:
@@ -66,15 +63,18 @@ def clean_lemmas(lemmas):
     return cleaned
 
 
-def fetch_tv_docs_by_day(cur):
+def fetch_tv_docs_by_day(
+    cur: PGCursor,
+) -> dict[dt.date, list[tuple[int, str]]]:
     """
-    Retourne date -> liste de (article_id, texte_doc)
+    Retourne date -> liste de (article_id, source, texte_doc)
     où texte_doc = lemmes nettoyés joinés par espace.
     """
     cur.execute("""
         SELECT
             ar.id,
             ar.published_at::date AS date,
+            ar.source,
             ac.lemmas
         FROM articles_raw ar
         JOIN articles_clean ac ON ac.article_id = ar.id
@@ -85,19 +85,21 @@ def fetch_tv_docs_by_day(cur):
     rows = cur.fetchall()
 
     docs_by_date = defaultdict(list)
-    for article_id, date, lemmas in rows:
+    for article_id, date, source, lemmas in rows:
         if not lemmas:
             continue
         cleaned = clean_lemmas(lemmas)
         if not cleaned:
             continue
         text = " ".join(cleaned)
-        docs_by_date[date].append((article_id, text))
+        # on garde maintenant aussi la source
+        docs_by_date[date].append((article_id, source, text))
 
     return docs_by_date
 
 
-def already_computed_dates(cur):
+
+def already_computed_dates(cur: PGCursor) -> set[dt.date]:
     cur.execute("""
         SELECT DISTINCT date
         FROM topics_daily
@@ -106,13 +108,21 @@ def already_computed_dates(cur):
     return {row[0] for row in cur.fetchall()}
 
 
-def extract_topics_for_date(date, docs, n_topics=10, n_words=8):
+def extract_topics_for_date(
+    date: dt.date,
+    docs: Sequence[tuple[int, str]],
+    n_topics: int | None = None,
+    n_words: int = 8,
+) -> list[dict[str, Any]]:
     """
     docs : liste de textes (1 par article)
     Retourne :
       - topics_info : [{topic_id, keywords}]
       - doc_topic_ids : liste du topic principal pour chaque doc
     """
+    if n_topics is None:
+        n_topics = int(CONFIG["topics"]["default_n_topics"])
+
     if len(docs) == 0:
         return [], []
 
@@ -152,89 +162,118 @@ def extract_topics_for_date(date, docs, n_topics=10, n_words=8):
     return topics_info, doc_topic_ids
 
 
-def compute_topics_daily():
-    conn = get_conn()
-    conn.autocommit = False
-    cur = conn.cursor()
+def compute_topics_daily() -> None:
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    try:
-        docs_by_date = fetch_tv_docs_by_day(cur)
-        done_dates = already_computed_dates(cur)
+        try:
+            docs_by_date = fetch_tv_docs_by_day(cur)
+            done_dates = already_computed_dates(cur)
 
-        logging.info(f"{len(docs_by_date)} dates avec docs TV.")
+            logger.info(f"{len(docs_by_date)} dates avec docs TV.")
 
-        rows_to_insert = []
+            rows_to_insert = []
 
-        for date, articles in docs_by_date.items():
-            if date in done_dates:
-                logging.info(f"[{date}] déjà traitée, on saute.")
-                continue
+            for date, articles in docs_by_date.items():
+                if date in done_dates:
+                    logger.info(f"[{date}] déjà traitée, on saute.")
+                    continue
 
-            article_ids = [a_id for (a_id, txt) in articles]
-            docs = [txt for (a_id, txt) in articles]
+                # articles = liste de (article_id, source, texte)
+                article_ids = [a_id for (a_id, src, txt) in articles]
+                sources = [src for (a_id, src, txt) in articles]
+                docs = [txt for (a_id, src, txt) in articles]
 
-            if len(docs) < 3:
-                logging.info(f"[{date}] Trop peu de docs ({len(docs)}), on ignore.")
-                continue
+                if len(docs) < 3:
+                    logger.info(f"[{date}] Trop peu de docs ({len(docs)}), on ignore.")
+                    continue
 
-            logging.info(f"[{date}] {len(docs)} docs -> topic modeling...")
+                logger.info(f"[{date}] {len(docs)} docs -> topic modeling...")
 
-            topics_info, doc_topic_ids = extract_topics_for_date(date, docs)
+                topics_info, doc_topic_ids = extract_topics_for_date(date, docs)
 
-            if not topics_info:
-                logging.info(f"[{date}] aucun topic détecté.")
-                continue
+                if not topics_info:
+                    logger.info(f"[{date}] aucun topic détecté.")
+                    continue
 
-            topic_counts = Counter(doc_topic_ids)
+                # comptage global par topic
+                topic_counts = Counter(doc_topic_ids)
 
-            for t in topics_info:
-                tid = int(t["topic_id"])
-                keywords = t["keywords"]
-                articles_count = int(topic_counts.get(tid, 0))
-                topic_label = ", ".join(keywords[:3])
+                # comptage par (source, topic_id)
+                source_topic_counts = Counter()
+                for src, topic_id in zip(sources, doc_topic_ids):
+                    source_topic_counts[(src, int(topic_id))] += 1
 
-                rows_to_insert.append((
-                    date,
-                    "ALL",          # toutes chaînes TV
-                    "tv",
-                    tid,
-                    topic_label,
-                    articles_count,
-                    keywords
-                ))
+                # on garde la liste des sources présentes ce jour-là
+                unique_sources = sorted(set(sources))
 
-        if not rows_to_insert:
-            logging.info("Aucun topic à insérer.")
+                for t in topics_info:
+                    tid = int(t["topic_id"])
+                    keywords = t["keywords"]
+                    topic_label = ", ".join(keywords[:3])
+
+                    # 1) lignes par chaîne TV
+                    for src in unique_sources:
+                        src_count = int(source_topic_counts.get((src, tid), 0))
+                        if src_count == 0:
+                            continue
+
+                        rows_to_insert.append((
+                            date,
+                            src,        # vraie source : cnews, bfmtv, etc.
+                            "tv",
+                            tid,
+                            topic_label,
+                            src_count,
+                            keywords
+                        ))
+
+                    # 2) ligne agrégée "ALL" (pour dashboard current)
+                    total_count = int(topic_counts.get(tid, 0))
+                    if total_count > 0:
+                        rows_to_insert.append((
+                            date,
+                            "ALL",
+                            "tv",
+                            tid,
+                            topic_label,
+                            total_count,
+                            keywords
+                        ))
+
+            if not rows_to_insert:
+                logger.info("Aucun topic à insérer.")
+                conn.rollback()
+                return
+
+            logger.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily...")
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO topics_daily
+                (date, source, media_type, topic_id, topic_label, articles_count, keywords)
+                VALUES %s
+                ON CONFLICT (date, source, media_type, topic_id)
+                DO UPDATE SET
+                topic_label = EXCLUDED.topic_label,
+                articles_count = EXCLUDED.articles_count,
+                keywords = EXCLUDED.keywords
+                """,
+                rows_to_insert
+            )
+
+            conn.commit()
+            logger.info("topics_daily mis à jour.")
+
+        except Exception as e:
             conn.rollback()
-            return
-
-        logging.info(f"Insertion de {len(rows_to_insert)} lignes dans topics_daily...")
-
-        execute_values(
-            cur,
-            """
-            INSERT INTO topics_daily
-            (date, source, media_type, topic_id, topic_label, articles_count, keywords)
-            VALUES %s
-            ON CONFLICT (date, source, media_type, topic_id)
-            DO UPDATE SET
-              topic_label = EXCLUDED.topic_label,
-              articles_count = EXCLUDED.articles_count,
-              keywords = EXCLUDED.keywords
-            """,
-            rows_to_insert
-        )
-
-        conn.commit()
-        logging.info("topics_daily mis à jour.")
-
-    except Exception as e:
-        conn.rollback()
-        logging.error(f"Erreur topics_daily : {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
+            logger.error(f"Erreur topics_daily : {e}")
+            raise
+        finally:
+            cur.close()
+        
 
 
 if __name__ == "__main__":

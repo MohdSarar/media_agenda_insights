@@ -1,6 +1,6 @@
+from core.db import get_conn
 import os
-import logging
-
+from core.logging import get_logger
 import psycopg2
 from psycopg2.extras import Json
 from dotenv import load_dotenv
@@ -11,16 +11,15 @@ import spacy
 import re
 from bs4 import BeautifulSoup
 
+from processing.nlp.text_cleaning import clean_html, clean_text
+
+from typing import Any, Optional
+from core.db_types import PGConnection, PGCursor, JsonDict, JsonList
 
 load_dotenv()
 
 DB_URL = os.getenv("DATABASE_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
+logger = get_logger(__name__)
 # ⚠️ À exécuter UNE SEULE FOIS dans un script à part ou en shell :
 # import stanza; stanza.download('fr')
 # python -m spacy download fr_core_news_sm
@@ -36,13 +35,11 @@ stanza_nlp = stanza.Pipeline(
 spacy_nlp = spacy.load("fr_core_news_sm")
 
 
-def get_db_connection():
-    if not DB_URL:
-        raise RuntimeError("DATABASE_URL manquant dans l'environnement")
-    return psycopg2.connect(DB_URL)
+get_db_connection = get_conn
 
-
-def fetch_unprocessed_articles(cur):
+def fetch_unprocessed_articles(
+        cur: PGCursor,
+    ) -> list[tuple[int, str, Optional[str]]]:
     """
     Récupère tous les articles qui n'ont pas encore de ligne associée
     dans articles_clean.
@@ -56,49 +53,12 @@ def fetch_unprocessed_articles(cur):
     return cur.fetchall()
 
 
-def clean_html(text: str) -> str:
-    """
-    Nettoyage HTML + artefacts techniques (img, 800x0, etc.)
-    """
-    if not text:
-        return ""
-
-    # Suppression des balises HTML
-    soup = BeautifulSoup(text, "html.parser")
-    clean = soup.get_text(separator=" ")
-
-    # Suppression des URLs
-    clean = re.sub(r'http\S+', ' ', clean)
-
-    # Suppression des patterns d'images / tailles
-    clean = re.sub(r'\b(img|jpg|jpeg|png|gif)\b', ' ', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'\b\d+x\d+\b', ' ', clean)  # ex: 800x0
-
-    # Suppression de quelques entités HTML courantes
-    clean = clean.replace("&nbsp;", " ")
-    clean = clean.replace("&amp;", " ")
-    clean = clean.replace("&quot;", " ")
-
-    # Résidus de "><"
-    clean = clean.replace("><", " ")
-
-    # Espaces multiples
-    clean = re.sub(r'\s+', ' ', clean)
-
-    return clean.strip()
 
 
-def clean_text(text: str) -> str:
-    """
-    Nettoyage général (retour à la ligne, espaces).
-    Appelée après clean_html pour normaliser.
-    """
-    if not text:
-        return ""
-    return text.replace("\n", " ").strip()
-
-
-def process_text_stanza_and_spacy(text: str):
+def process_text_stanza_and_spacy(
+        text: str,
+    ) -> tuple[list[str], list[str], list[JsonDict]]:
+        
     """
     Utilise Stanza pour tokens + lemmes
     et spaCy pour les entités nommées.
@@ -123,7 +83,14 @@ def process_text_stanza_and_spacy(text: str):
     return tokens, lemmas, ents
 
 
-def insert_clean(cur, article_id, cleaned, tokens, lemmas, ents):
+def insert_clean(
+    cur: PGCursor,
+    article_id: int,
+    cleaned: str,
+    tokens: list[str],
+    lemmas: list[str],
+    ents: list[JsonDict],
+) -> None:
     cur.execute("""
         INSERT INTO articles_clean (article_id, cleaned_text, tokens, lemmas, entities)
         VALUES (%s, %s, %s, %s, %s)
@@ -133,49 +100,48 @@ def insert_clean(cur, article_id, cleaned, tokens, lemmas, ents):
         cleaned,
         tokens,
         lemmas,
-        Json(ents)  # sérialisation JSONB correcte
+        Json(ents)  #sérialisation JSONB correcte
     ))
 
 
-def process_articles():
-    conn = get_db_connection()
-    conn.autocommit = False
-    cur = conn.cursor()
+def process_articles()  -> None:
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
 
-    try:
-        articles = fetch_unprocessed_articles(cur)
-        logging.info(f"{len(articles)} articles à traiter.")
+        try:
+            articles = fetch_unprocessed_articles(cur)
+            logger.info(f"{len(articles)} articles à traiter.")
 
-        count = 0
+            count = 0
 
-        for article_id, title, summary in articles:
-            # Texte brut (titre + résumé)
-            raw_text = f"{title or ''}. {summary or ''}"
+            for article_id, title, summary in articles:
+                #texte brut (titre + résumé)
+                raw_text = f"{title or ''}. {summary or ''}"
 
-            # 1) Nettoyage HTML
-            html_cleaned = clean_html(raw_text)
+                # nettoyage HTML
+                html_cleaned = clean_html(raw_text)
 
-            # 2) Nettoyage simple
-            cleaned = clean_text(html_cleaned)
+                #nettoyage simple
+                cleaned = clean_text(html_cleaned)
 
-            # 3) NLP (Stanza + spaCy) sur le texte nettoyé
-            tokens, lemmas, ents = process_text_stanza_and_spacy(cleaned)
+                # NLP (Stanza + spaCy) sur le texte nettoyé
+                tokens, lemmas, ents = process_text_stanza_and_spacy(cleaned)
 
-            # 4) Insertion en base
-            insert_clean(cur, article_id, cleaned, tokens, lemmas, ents)
-            count += 1
+                insert_clean(cur, article_id, cleaned, tokens, lemmas, ents)
+                count += 1
 
-        conn.commit()
-        logging.info(f"Traitement NLP (Stanza + spaCy) terminé. Articles nettoyés : {count}")
+            conn.commit()
+            logger.info(f"Traitement NLP (Stanza + spaCy) terminé. Articles nettoyés : {count}")
 
-    except Exception as e:
-        conn.rollback()
-        logging.error(f"Erreur NLP (Stanza + spaCy) : {e}")
-        raise
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Erreur NLP (Stanza + spaCy) : {e}")
+            raise
 
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
+        
 
 
 if __name__ == "__main__":
