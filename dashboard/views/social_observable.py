@@ -14,7 +14,7 @@ def get_conn():
     return psycopg2.connect(DB_URL)
 
 
-@st.cache_data(ttl=600)  # 10min
+@st.cache_data(ttl=120)
 def fetch_distinct_filters():
     conn = get_conn()
     try:
@@ -39,7 +39,7 @@ def fetch_distinct_filters():
         conn.close()
 
 
-@st.cache_data(ttl=300)  # 5min
+@st.cache_data(ttl=120)
 def fetch_keywords(date_from, date_to, platform, source, lang, top_k=30):
     conn = get_conn()
     try:
@@ -69,7 +69,7 @@ def fetch_keywords(date_from, date_to, platform, source, lang, top_k=30):
         conn.close()
 
 
-@st.cache_data(ttl=300)  # 5min
+@st.cache_data(ttl=120)
 def fetch_topics(date_from, date_to, platform, source, lang, top_k=25):
     conn = get_conn()
     try:
@@ -99,7 +99,7 @@ def fetch_topics(date_from, date_to, platform, source, lang, top_k=25):
         conn.close()
 
 
-@st.cache_data(ttl=300)  # 5min
+@st.cache_data(ttl=120)
 def fetch_keyword_trend(date_from, date_to, platform, source, lang, keyword):
     """
     Time series of one keyword across days (score).
