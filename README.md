@@ -1,6 +1,7 @@
 # Media Agenda Insights
 
 **Automated Media Monitoring & Narrative Analysis**
+[![Run Media Agenda Pipeline](https://github.com/MohdSarar/media_agenda_insights/actions/workflows/pipeline.yml/badge.svg?branch=main)](https://github.com/MohdSarar/media_agenda_insights/actions/workflows/pipeline.yml)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" />
@@ -408,7 +409,6 @@ Multi-layered cleanup pipeline:
 
 | Feature | Status |
 |---------|--------|
-
 | Modular ETL pipeline (TV & press RSS) | ✅ Done |
 | PostgreSQL schema with indexed analytics tables | ✅ Done |
 | NLP pipeline (Stanza + spaCy, multilingual-ready) | ✅ Done |
