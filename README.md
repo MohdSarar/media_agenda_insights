@@ -1,6 +1,7 @@
 # Media Agenda Insights
 
 **Automated Media Monitoring & Narrative Analysis**
+
 [![Run Media Agenda Pipeline](https://github.com/MohdSarar/media_agenda_insights/actions/workflows/pipeline.yml/badge.svg?branch=main)](https://github.com/MohdSarar/media_agenda_insights/actions/workflows/pipeline.yml)
 
 <p align="center">
