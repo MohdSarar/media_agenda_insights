@@ -154,6 +154,7 @@ jobs:
           run_step "keywords f24"        python -m processing.keywords.extract_france24_keywords || true
           run_step "keywords social"     python -m processing.keywords.extract_social_keywords || true
           run_step "topics global"       python -m processing.topics.extract_topics
+          run_step "narratives cluster"  python -m processing.narratives.embed_and_cluster || true
           run_step "topics f24"          python -m processing.topics.extract_france24_topics || true
           run_step "topics social"       python -m processing.topics.extract_social_topics || true
           run_step "bias"                python -m processing.bias.analyze_topic_bias || true
