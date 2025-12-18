@@ -1,95 +1,75 @@
 # dashboard/views/compare.py
 
-from datetime import date as date_type
+from __future__ import annotations
 
-import streamlit as st
-import pandas as pd
 import altair as alt
+import pandas as pd
+import streamlit as st
 
-from dashboard.data_access import (
-    get_available_dates,
-    load_topics_timeseries,
-)
+from dashboard.data_access import load_topics_timeseries
 
 
-def render():
-    st.title("📊 Comparaison entre chaînes")
+def render(filters: dict):
+    st.subheader("📊 Comparaison – évolution par source")
 
-    dates = get_available_dates()
-    if not dates:
-        st.error("Aucune donnée disponible.")
-        return
+    start_date = filters["start_date"]
+    end_date = filters["end_date"]
+    media_type = filters.get("media_type") or "tv"  # topics_daily is most meaningful for TV in your pipeline
+    source = filters.get("source", "ALL")
 
-    min_date, max_date = dates[0], dates[-1]
-
-    with st.sidebar:
-        st.header("Période d'analyse")
-        start_date, end_date = st.date_input(
-            "Intervalle de dates",
-            value=(max_date, max_date),
-            min_value=min_date,
-            max_value=max_date,
-        )
-
-        if isinstance(start_date, list) or isinstance(start_date, tuple):
-            # streamlit peut renvoyer des tuples selon la version
-            start_date, end_date = start_date
-
-    if start_date > end_date:
-        st.warning("La date de début est supérieure à la date de fin.")
-        return
-
-    st.markdown(
-        f"Analyse de la période **{start_date} → {end_date}** (TV, tous sujets confondus)."
-    )
-
-    df_ts = load_topics_timeseries(start_date, end_date, media_type="tv")
+    df_ts = load_topics_timeseries(start_date, end_date, media_type=media_type)
     if df_ts.empty:
-        st.info("Pas de données de sujets pour cette période.")
+        st.info("Aucune donnée sur cette période (topics_daily).")
         return
 
-    # Normalisation des noms de source
-    df_ts["source"] = df_ts["source"].fillna("Inconnu")
+    if source != "ALL":
+        df_ts = df_ts[df_ts["source"] == source]
 
-    # --- Heatmap : intensité des sujets par date/source ---
-    st.subheader("Heatmap – Volume de sujets par chaîne et par jour")
+    # Ensure date dtype
+    df_ts["date"] = pd.to_datetime(df_ts["date"], errors="coerce")
+    df_ts = df_ts.dropna(subset=["date"])
 
-    df_heat = df_ts.copy()
+    # --- KPIs ---
+    total = int(df_ts["total_articles"].sum()) if not df_ts.empty else 0
+    n_sources = df_ts["source"].nunique()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Articles agrégés", f"{total:,}")
+    c2.metric("Sources", f"{n_sources:,}")
+    c3.metric("Media type", media_type)
 
-    # ✅ forcer la colonne date en datetime
-    df_heat["date"] = pd.to_datetime(df_heat["date"], errors="coerce")
-    df_heat = df_heat.dropna(subset=["date"])
+    st.divider()
 
-    df_heat["date_str"] = df_heat["date"].dt.strftime("%Y-%m-%d")
+    col1, col2 = st.columns([1.2, 1.0], gap="large")
 
-
-    heat_chart = (
-        alt.Chart(df_heat)
-        .mark_rect()
-        .encode(
-            x=alt.X("date_str:N", title="Date", sort=list(sorted(df_heat["date_str"].unique()))),
-            y=alt.Y("source:N", title="Chaîne"),
-            color=alt.Color("total_articles:Q", title="Nb. articles (tous topics)"),
-            tooltip=["date_str", "source", "total_articles"],
+    with col1:
+        st.markdown("### 📈 Courbe (articles / jour)")
+        line_chart = (
+            alt.Chart(df_ts)
+            .mark_line(point=False)
+            .encode(
+                x=alt.X("date:T", title=None),
+                y=alt.Y("total_articles:Q", title="Articles"),
+                color=alt.Color("source:N", legend=alt.Legend(title="Source")),
+                tooltip=["date:T", "source:N", "total_articles:Q"],
+            )
+            .properties(height=340)
         )
-        .properties(height=300)
-    )
+        st.altair_chart(line_chart, width="stretch")
 
-    st.altair_chart(heat_chart, use_container_width=True)
-
-    # --- Courbe : total articles par chaîne sur la période ---
-    st.subheader("Évolution temporelle – Nombre total d'articles par chaîne")
-
-    line_chart = (
-        alt.Chart(df_ts)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("date:T", title="Date"),
-            y=alt.Y("total_articles:Q", title="Articles (sujets agrégés)"),
-            color=alt.Color("source:N", title="Chaîne"),
-            tooltip=["date", "source", "total_articles"],
+    with col2:
+        st.markdown("### 🧩 Part d'attention (stacked)")
+        area = (
+            alt.Chart(df_ts)
+            .mark_area()
+            .encode(
+                x=alt.X("date:T", title=None),
+                y=alt.Y("total_articles:Q", stack="normalize", title="Part"),
+                color=alt.Color("source:N", legend=None),
+                tooltip=["date:T", "source:N", "total_articles:Q"],
+            )
+            .properties(height=340)
         )
-        .properties(height=300)
-    )
+        st.altair_chart(area, width="stretch")
 
-    st.altair_chart(line_chart, use_container_width=True)
+    with st.expander("Détails (table)", expanded=False):
+        st.dataframe(df_ts.sort_values(["date", "source"]), width="stretch", hide_index=True)

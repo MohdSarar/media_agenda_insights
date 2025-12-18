@@ -1,36 +1,26 @@
 # dashboard/views/analytics.py
 
-import streamlit as st
+from __future__ import annotations
+
 import pandas as pd
-from datetime import date, timedelta
+import streamlit as st
 
 from dashboard.data_access import get_connection
 
 
-def load_df(query: str, params=None) -> pd.DataFrame:
+def _read_sql(query: str, params=None) -> pd.DataFrame:
     conn = get_connection()
-    # ❌ ne pas fermer la connexion ici, elle est gérée par data_access / Streamlit
-    df = pd.read_sql(query, conn, params=params)
-    return df
+    return pd.read_sql(query, conn, params=params)
 
 
-def render():
-    st.title("📊 Analytics Insights")
+def render(filters: dict):
+    st.subheader("📐 Analytics (tables analytiques)")
 
-    st.markdown(
-        """
-        Cette section présente les analyses avancées calculées à partir des données TV / presse :  
-
-        - **Media Bias Scores** : répartition des thèmes par média  
-        - **Topic Spikes** : emballements médiatiques (pics de couverture)  
-        - **Keyword Lifetime** : durée de vie des mots-clés dans les médias  
-        - **Topic Lifetime** : apparition, pic et disparition des sujets  
-        - **Theme Lifetime** : persistance des grands thèmes narratifs  
-        """
-    )
+    start_date = filters["start_date"]
+    end_date = filters["end_date"]
 
     analysis = st.selectbox(
-        "Choisissez une analyse à explorer :",
+        "Analyse",
         [
             "Media Bias",
             "Topic Spikes",
@@ -38,172 +28,139 @@ def render():
             "Topic Lifetime",
             "Theme Lifetime",
         ],
+        index=0,
     )
 
     if analysis == "Media Bias":
-        st.subheader("📌 Media Bias Scores (par thème et source)")
+        st.markdown("### 📌 Media Bias Scores (par thème et source)")
 
         query = """
-            SELECT date, source, theme, bias_score, methodology
+            SELECT
+                date,
+                source,
+                theme,
+                AVG(bias_score)    AS bias_score,
+                MIN(methodology)  AS methodology,
+                COUNT(*)          AS n_obs
             FROM media_bias_scores
+            WHERE date BETWEEN %s AND %s
+            GROUP BY date, source, theme
             ORDER BY date DESC, source, theme
-            LIMIT 500
+            LIMIT 2000;
         """
-        df = load_df(query)
+        df = _read_sql(query, params=[start_date, end_date])
 
         if df.empty:
-            st.info("Aucun score de biais disponible pour l’instant.")
+            st.info("Aucun score de biais sur la période.")
             return
 
-        # 🔧 Normaliser la colonne date au format date (pas Timestamp)
-        df["date"] = pd.to_datetime(df["date"]).dt.date
+        with st.expander("Filtres (facultatif)", expanded=False):
+            sources = ["ALL"] + sorted(df["source"].dropna().unique().tolist())
+            themes = ["ALL"] + sorted(df["theme"].dropna().unique().tolist())
+            src = st.selectbox("Source", sources, index=0)
+            th = st.selectbox("Thème", themes, index=0)
 
-        # Filtre source et date
-        sources = sorted(df["source"].unique())
-        selected_sources = st.multiselect("Filtrer les sources :", sources, default=sources)
+        if src != "ALL":
+            df = df[df["source"] == src]
+        if th != "ALL":
+            df = df[df["theme"] == th]
 
-        min_date = df["date"].min()
-        max_date = df["date"].max()
-        date_range = st.slider(
-            "Période",
-            min_value=min_date,
-            max_value=max_date,
-            value=(min_date, max_date),
-        )
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Lignes", f"{len(df):,}")
+        c2.metric("Sources", f"{df['source'].nunique():,}")
+        c3.metric("Thèmes", f"{df['theme'].nunique():,}")
 
-        # 🔧 Ici on compare date à date, sans pd.to_datetime
-        mask = (
-            df["source"].isin(selected_sources)
-            & (df["date"] >= date_range[0])
-            & (df["date"] <= date_range[1])
-        )
-        df_filtered = df[mask]
+        st.dataframe(df.sort_values("date", ascending=False), width="stretch", hide_index=True)
 
-        st.dataframe(df_filtered)
-
-        st.markdown("**Moyenne des biais par thème et par média :**")
-        bias_summary = (
-            df_filtered.groupby(["source", "theme"])["bias_score"]
+        st.markdown("#### Moyenne des biais (source × thème)")
+        summary = (
+            df.groupby(["source", "theme"], as_index=False)["bias_score"]
             .mean()
-            .reset_index()
             .sort_values("bias_score", ascending=False)
         )
-        st.dataframe(bias_summary)
-
+        st.dataframe(summary, width="stretch", hide_index=True)
 
     elif analysis == "Topic Spikes":
-        st.subheader("📌 Topic Spikes Detection")
+        st.markdown("### ⚡ Topic Spikes")
 
         query = """
-            SELECT date, topic_id, source, spike_score, baseline_window
-            FROM spikes
+            SELECT date, source, topic_label, spike_score, z_score, baseline, current_value
+            FROM topic_spikes
+            WHERE date BETWEEN %s AND %s
             ORDER BY date DESC, spike_score DESC
-            LIMIT 500
+            LIMIT 2000
         """
-        df = load_df(query)
+        df = _read_sql(query, params=[start_date, end_date])
 
         if df.empty:
-            st.info("Aucun spike détecté pour l’instant (pas assez d’historique).")
+            st.info("Aucun spike détecté sur la période.")
             return
 
-        st.dataframe(df)
+        with st.expander("Filtres (facultatif)", expanded=False):
+            sources = ["ALL"] + sorted(df["source"].dropna().unique().tolist())
+            src = st.selectbox("Source", sources, index=0)
+            topk = st.slider("Top K", 10, 200, 50, step=10)
 
-        top_spikes = df.sort_values("spike_score", ascending=False).head(20)
-        st.markdown("**Top spikes (score le plus élevé) :**")
-        st.dataframe(top_spikes)
+        if src != "ALL":
+            df = df[df["source"] == src]
+
+        df = df.sort_values("spike_score", ascending=False).head(topk)
+        st.dataframe(df, width="stretch", hide_index=True)
 
     elif analysis == "Keyword Lifetime":
-        st.subheader("⏳ Keyword Lifetime")
+        st.markdown("### ⏳ Keyword Lifetime")
 
         query = """
             SELECT word, start_date, end_date, duration_days, total_frequency
             FROM keyword_lifetime
-            ORDER BY start_date DESC
-            LIMIT 500
+            WHERE start_date <= %s AND end_date >= %s
+            ORDER BY duration_days DESC, total_frequency DESC
+            LIMIT 2000
         """
-        df = load_df(query)
+        df = _read_sql(query, params=[end_date, start_date])
 
         if df.empty:
-            st.info("Aucune donnée de lifetime pour les mots-clés.")
+            st.info("Aucun lifetime keyword disponible.")
             return
 
-        st.dataframe(df)
+        with st.expander("Options (facultatif)", expanded=False):
+            min_days = st.slider("Durée min (jours)", 1, 60, 7)
+            df = df[df["duration_days"] >= min_days]
 
-        st.markdown("**Mots-clés les plus persistants (par durée) :**")
-        longest = df.sort_values("duration_days", ascending=False).head(20)
-        st.dataframe(longest)
-
-        st.markdown("**Mots-clés les plus fréquents (par mentions totales) :**")
-        most_freq = df.sort_values("total_frequency", ascending=False).head(20)
-        st.dataframe(most_freq)
+        st.dataframe(df, width="stretch", hide_index=True)
 
     elif analysis == "Topic Lifetime":
-        st.subheader("📆 Topic Lifetime")
+        st.markdown("### ⏳ Topic Lifetime")
 
         query = """
-            SELECT topic_id, topic_label, first_seen_date, last_seen_date,
-                   peak_date, total_mentions
+            SELECT topic_label, start_date, end_date, duration_days, total_articles
             FROM topic_lifetime
-            ORDER BY first_seen_date DESC
-            LIMIT 500
+            WHERE start_date <= %s AND end_date >= %s
+            ORDER BY duration_days DESC, total_articles DESC
+            LIMIT 2000
         """
-        df = load_df(query)
+        df = _read_sql(query, params=[end_date, start_date])
 
         if df.empty:
-            st.info("Aucune donnée de lifetime pour les topics.")
+            st.info("Aucun lifetime topic disponible.")
             return
 
-        # 🔧 Normaliser les colonnes de dates au format datetime
-        df["first_seen_date"] = pd.to_datetime(df["first_seen_date"])
-        df["last_seen_date"] = pd.to_datetime(df["last_seen_date"])
-        df["peak_date"] = pd.to_datetime(df["peak_date"])
-
-        st.dataframe(df)
-
-        st.markdown("**Topics les plus persistants :**")
-        longest = (
-            df.assign(
-                duration_days=(df["last_seen_date"] - df["first_seen_date"]).dt.days + 1
-            )
-            .sort_values("duration_days", ascending=False)
-            .head(20)
-        )
-        st.dataframe(longest)
-
-        st.markdown("**Topics les plus couverts (mentions totales) :**")
-        most_covered = df.sort_values("total_mentions", ascending=False).head(20)
-        st.dataframe(most_covered)
-
+        st.dataframe(df, width="stretch", hide_index=True)
 
     elif analysis == "Theme Lifetime":
-        st.subheader("🎭 Theme Lifetime")
+        st.markdown("### ⏳ Theme Lifetime")
 
         query = """
-            SELECT theme, start_date, end_date, peak_date, total_mentions
+            SELECT theme, start_date, end_date, duration_days, total_score
             FROM theme_lifetime
-            ORDER BY start_date DESC
-            LIMIT 500
+            WHERE start_date <= %s AND end_date >= %s
+            ORDER BY duration_days DESC, total_score DESC
+            LIMIT 2000
         """
-        df = load_df(query)
+        df = _read_sql(query, params=[end_date, start_date])
 
         if df.empty:
-            st.info("Aucune donnée de lifetime pour les thèmes.")
+            st.info("Aucun lifetime theme disponible.")
             return
 
-        # 🔧 Normaliser les colonnes de dates
-        df["start_date"] = pd.to_datetime(df["start_date"])
-        df["end_date"] = pd.to_datetime(df["end_date"])
-        df["peak_date"] = pd.to_datetime(df["peak_date"])
-
-        st.dataframe(df)
-
-        st.markdown("**Thèmes les plus persistants :**")
-        df = df.assign(
-            duration_days=(df["end_date"] - df["start_date"]).dt.days + 1
-        )
-        longest = df.sort_values("duration_days", ascending=False).head(20)
-        st.dataframe(longest)
-
-        st.markdown("**Thèmes les plus couverts (mentions totales) :**")
-        most_covered = df.sort_values("total_mentions", ascending=False).head(20)
-        st.dataframe(most_covered)
+        st.dataframe(df, width="stretch", hide_index=True)

@@ -1,106 +1,80 @@
 # dashboard/views/topics.py
 
-from datetime import date as date_type
+from __future__ import annotations
 
-import streamlit as st
-import pandas as pd
 import altair as alt
+import pandas as pd
+import streamlit as st
 
-from dashboard.data_access import (
-    get_available_dates,
-    load_word_trend,
-    load_topics_for_day,
-)
+from dashboard.data_access import load_word_trend, load_topics_for_day
 
 
-def render():
-    st.title("🧠 Exploration des sujets & narratifs")
+def render(filters: dict):
+    st.subheader("🧠 Topics & tendances")
 
-    dates = get_available_dates()
-    if not dates:
-        st.error("Aucune donnée disponible.")
-        return
+    start_date = filters["start_date"]
+    end_date = filters["end_date"]
+    media_type = filters.get("media_type") or "tv"
+    source = filters.get("source", "ALL")
 
-    min_date, max_date = dates[0], dates[-1]
-
-    with st.sidebar:
-        st.header("Filtres sujets & mots-clés")
-
-        start_date, end_date = st.date_input(
-            "Période",
-            value=(max_date, max_date),
-            min_value=min_date,
-            max_value=max_date,
-        )
-        if isinstance(start_date, list) or isinstance(start_date, tuple):
-            start_date, end_date = start_date
-
+    with st.expander("Options (facultatif)", expanded=False):
         focus_word = st.text_input(
-            "Mot-clé à analyser (optionnel, ex: sécurité, budget, immigration, énergie)",
-            value="sécurité",
-        )
+            "Mot-clé à suivre (optionnel)",
+            value="",
+            placeholder="ex: budget, énergie, immigration…",
+        ).strip()
 
-        selected_date_topics: date_type = st.date_input(
-            "Date pour l'exploration détaillée des topics",
-            value=max_date,
-            min_value=min_date,
-            max_value=max_date,
-            key="topics_date",
-        )
+    col1, col2 = st.columns([1.15, 1.0], gap="large")
 
-    col1, col2 = st.columns(2)
-
-    # --- Colonne 1 : tendance d'un mot-clé ---
+    # --- Left: focus word trend (if provided) ---
     with col1:
-        st.subheader(f"Tendance du mot-clé : `{focus_word}`")
-
-        if focus_word.strip():
-            df_trend = load_word_trend(focus_word.strip(), start_date, end_date, media_type="tv")
-
-            if df_trend.empty:
-                st.info("Ce mot-clé ne semble pas apparaître dans la période sélectionnée.")
+        st.markdown("### 🔎 Tendance d'un mot-clé")
+        if not focus_word:
+            st.info("Renseigne un mot-clé dans 'Options' pour afficher sa tendance.")
+        else:
+            df = load_word_trend(
+                word=focus_word,
+                start_date=start_date,
+                end_date=end_date,
+                media_type=media_type,
+            )
+            if df.empty:
+                st.info("Aucune occurrence trouvée sur la période.")
             else:
-                df_trend["date"] = df_trend["date"].dt.date
+                if source != "ALL":
+                    df = df[df["source"] == source]
 
-                line = (
-                    alt.Chart(df_trend)
-                    .mark_line(point=True)
+                df["date"] = pd.to_datetime(df["date"], errors="coerce")
+                df = df.dropna(subset=["date"])
+
+                chart = (
+                    alt.Chart(df)
+                    .mark_line(point=False)
                     .encode(
-                        x=alt.X("date:T", title="Date"),
-                        y=alt.Y("total_mentions:Q", title="Nb. de mentions"),
-                        color=alt.Color("source:N", title="Chaîne"),
-                        tooltip=["date", "source", "total_mentions"],
+                        x=alt.X("date:T", title=None),
+                        y=alt.Y("total_mentions:Q", title="Mentions"),
+                        color=alt.Color("source:N", legend=alt.Legend(title="Source")),
+                        tooltip=["date:T", "source:N", "total_mentions:Q"],
                     )
-                    .properties(height=300)
+                    .properties(height=340)
                 )
-                st.altair_chart(line, use_container_width=True)
+                st.altair_chart(chart, width="stretch")
 
-                st.dataframe(
-                    df_trend[["date", "source", "total_mentions"]],
-                    use_container_width=True,
-                    hide_index=True,
-                )
-        else:
-            st.info("Saisissez un mot-clé dans la barre latérale pour voir sa tendance.")
+                with st.expander("Détails (table)", expanded=False):
+                    st.dataframe(df.sort_values(["date", "source"]), width="stretch", hide_index=True)
 
-    # --- Colonne 2 : topics détaillés pour une date ---
+    # --- Right: topics of end_date (TV-focused) ---
     with col2:
-        st.subheader(f"Sujets détaillés – TV – {selected_date_topics}")
-
-        df_topics = load_topics_for_day(selected_date_topics, only_tv=True)
+        st.markdown(f"### 🗓️ Topics du jour (TV) — {end_date}")
+        df_topics = load_topics_for_day(end_date, only_tv=True)
         if df_topics.empty:
-            st.info("Pas de sujets pour cette date.")
+            st.info("Pas de topics pour cette date.")
         else:
-            df_topics = df_topics.sort_values("articles_count", ascending=False)
+            df_topics = df_topics.sort_values("articles_count", ascending=False).head(15)
             for _, row in df_topics.iterrows():
-                with st.expander(
-                    f"Topic {int(row['topic_id'])} – {row['topic_label']} "
-                    f"(Articles : {int(row['articles_count'])})",
-                    expanded=False,
-                ):
-                    keywords = row["keywords"]
-                    if isinstance(keywords, (list, tuple)):
-                        kw_text = ", ".join(keywords)
-                    else:
-                        kw_text = str(keywords)
-                    st.markdown(f"**Mots-clés :** {kw_text}")
+                title = f"Topic {int(row['topic_id'])} — {row['topic_label']} ({int(row['articles_count'])})"
+                with st.expander(title, expanded=False):
+                    keywords = row.get("keywords")
+                    kw_text = ", ".join(keywords) if isinstance(keywords, (list, tuple)) else str(keywords)
+                    st.caption("Mots-clés")
+                    st.write(kw_text)
