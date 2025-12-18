@@ -63,13 +63,18 @@ def save_bias(conn: PGConnection, df: pd.DataFrame) -> None:
     if df.empty:
         logger.info("No bias results to save.")
         return
+    df = df.drop_duplicates(subset=["date", "source", "topic_label", "methodology"])
 
     sql = """
         INSERT INTO media_bias_scores
         (date, source, theme, bias_score, methodology, details)
         VALUES %s
-        ON CONFLICT DO NOTHING;
+        ON CONFLICT (date, source, theme, methodology)
+        DO UPDATE SET
+            bias_score = EXCLUDED.bias_score,
+            details = EXCLUDED.details;
     """
+
 
     rows = [
         (r.date, r.source, r.topic_label, float(r.bias_score),
