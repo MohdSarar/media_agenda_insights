@@ -15,7 +15,9 @@
 </p>
 
 ---
-
+You can test the streamlit app in this link  https://french-media-agenda.streamlit.app/
+Make sure to cover target periods in filters in order to see the results correctly
+---
 ## Key Technologies
 
 | Layer | Stack |
