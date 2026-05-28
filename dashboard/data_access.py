@@ -171,6 +171,42 @@ def load_lemmas_range(
 
 
 @st.cache_data(ttl=900)
+def load_topics_range(
+    start_date: date,
+    end_date: date,
+    media_type: str = "tv",
+    top_n: int = 20,
+) -> pd.DataFrame:
+    """
+    Topics agrégés sur une période : somme des articles par topic_label,
+    plus le nombre de jours où le topic a été actif.
+    """
+    conn = get_connection()
+    query = """
+        SELECT
+            topic_label,
+            SUM(articles_count) AS total_articles,
+            COUNT(DISTINCT date)  AS days_active,
+            MIN(date)             AS first_seen,
+            MAX(date)             AS last_seen
+        FROM topics_daily
+        WHERE date BETWEEN %s AND %s
+          AND media_type = %s
+          AND source = 'ALL'
+          AND topic_label IS NOT NULL
+          AND topic_label <> ''
+        GROUP BY topic_label
+        ORDER BY total_articles DESC
+        LIMIT %s;
+    """
+    df = pd.read_sql_query(query, conn, params=[start_date, end_date, media_type, top_n])
+    if not df.empty:
+        df["first_seen"] = pd.to_datetime(df["first_seen"]).dt.date
+        df["last_seen"] = pd.to_datetime(df["last_seen"]).dt.date
+    return df
+
+
+@st.cache_data(ttl=900)
 def load_topics_for_day(selected_date: date, only_tv: bool = True) -> pd.DataFrame:
     conn = get_connection()
     query = "SELECT date, source, media_type, topic_id, topic_label, articles_count, keywords FROM topics_daily WHERE date = %s"
