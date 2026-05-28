@@ -44,7 +44,7 @@ def render(filters: dict):
             color=alt.Color(
                 "total_articles:Q",
                 title="Nb. articles",
-                scale=alt.Scale(scheme="indigo"),
+                scale=alt.Scale(scheme="blues"),
             ),
             tooltip=["date_str", "source", "total_articles"],
         )

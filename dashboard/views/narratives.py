@@ -183,7 +183,7 @@ def render(filters: dict):
         .encode(
             x=alt.X("source:N", title="Chaîne"),
             y=alt.Y("label:N", title="Narratif"),
-            color=alt.Color("articles:Q", title="Articles", scale=alt.Scale(scheme="indigo")),
+            color=alt.Color("articles:Q", title="Articles", scale=alt.Scale(scheme="blues")),
             tooltip=["label", "source", "articles"],
         )
         .properties(height=400)
