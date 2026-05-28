@@ -86,16 +86,10 @@ def render(filters: dict) -> None:
         with tabs[i]:
             _render_label_tab(df, label, start, end, mt or "tv")
 
-    if len(selected_labels) < len(tab_labels):
-        with tabs[-2]:
-            _render_search_tab(df, start, end, mt or "tv")
-        with tabs[-1]:
-            _render_heatmap_tab(start, end, mt or "tv")
-    else:
-        with tabs[-2]:
-            _render_search_tab(df, start, end, mt or "tv")
-        with tabs[-1]:
-            _render_heatmap_tab(start, end, mt or "tv")
+    with tabs[-2]:
+        _render_search_tab(df, start, end, mt or "tv")
+    with tabs[-1]:
+        _render_heatmap_tab(start, end, mt or "tv")
 
     # ── CSV export ────────────────────────────────────────────────────────────
     st.markdown("---")
