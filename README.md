@@ -430,6 +430,23 @@ Multi-layered cleanup pipeline:
 
 ---
 
+## Roadmap — Next Features
+
+Features identified as high-value for journalists and researchers:
+
+| # | Feature | Target users | Priority |
+|---|---------|-------------|----------|
+| 1 | **Agenda Gap Detector** — surface topics high on social but ignored by TV (and vice versa) | Journalists | 🔴 High |
+| 2 | **Story Lifecycle Tracker** — Gantt-style timeline showing when each topic appeared, peaked and faded | Journalists | 🔴 High |
+| 3 | **CSV / permalink export** — filtered data export + shareable URL to any view state | Researchers | 🔴 High |
+| 4 | **Named Entity Recognition (NER) dashboard** — track which people, organizations and places are mentioned most, by whom | Both | 🟠 Medium-High |
+| 5 | **Narrative Divergence Score** — quantify how differently channels cover the same topic (0–1 editorial distance) | Both | 🟠 Medium-High |
+| 6 | **Framing Analysis** — classify coverage of a topic by frame (security / economic / humanitarian / legal) with visual breakdown | Researchers | 🟠 Medium |
+| 7 | **Inter-media Lead/Lag Analysis** — detect whether social media precedes TV on a topic or the reverse (cross-correlation) | Researchers | 🟡 Medium |
+| 8 | **Watchlist / Keyword Alerts** — let users define a set of topics to monitor; dedicated tab + spike notifications | Journalists | 🟡 Medium |
+
+---
+
 ## Author
 
 <p align="center">
