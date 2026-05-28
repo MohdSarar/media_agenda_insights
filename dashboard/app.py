@@ -20,6 +20,8 @@ from dashboard.views import (
     analytics,
     france24_multilingue,
     social_observable,
+    agenda_gap,
+    lifecycle,
 )
 
 
@@ -59,6 +61,15 @@ def main():
         else:
             db_min = db_max = date.today()
 
+        # Read date range from URL params (permalink support)
+        qp = st.query_params
+        try:
+            _qs = date.fromisoformat(qp.get("start", ""))
+            _qe = date.fromisoformat(qp.get("end", ""))
+            _default = (_qs, _qe)
+        except (ValueError, TypeError):
+            _default = (db_min, db_max)
+
         st.markdown(
             '<p style="color:#94a3b8;font-size:0.75rem;text-transform:uppercase;'
             'letter-spacing:0.08em;margin-bottom:0.5rem;">Période d\'analyse</p>',
@@ -66,7 +77,7 @@ def main():
         )
         period = st.date_input(
             "Période",
-            value=(db_min, db_max),
+            value=_default,
             min_value=db_min,
             max_value=db_max,
             label_visibility="collapsed",
@@ -76,6 +87,10 @@ def main():
             start_date, end_date = period
         else:
             start_date, end_date = db_min, db_max
+
+        # Sync to URL so the current view is shareable
+        st.query_params["start"] = str(start_date)
+        st.query_params["end"] = str(end_date)
 
         st.divider()
         st.markdown(
@@ -124,6 +139,8 @@ def main():
         "📈 Analytics",
         "🌍 France 24",
         "💬 Social Media",
+        "🔍 Agenda Gap",
+        "📅 Story Lifecycle",
     ])
 
     with tabs[0]:
@@ -140,6 +157,10 @@ def main():
         france24_multilingue.render(filters)
     with tabs[6]:
         social_observable.render(filters)
+    with tabs[7]:
+        agenda_gap.render(filters)
+    with tabs[8]:
+        lifecycle.render(filters)
 
     st.divider()
     st.markdown(

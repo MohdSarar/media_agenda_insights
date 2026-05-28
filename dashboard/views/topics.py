@@ -1,5 +1,7 @@
 # dashboard/views/topics.py
 
+from io import StringIO
+
 import streamlit as st
 import altair as alt
 
@@ -52,6 +54,15 @@ def render(filters: dict):
                         use_container_width=True,
                         hide_index=True,
                     )
+                csv_trend = StringIO()
+                df_trend.to_csv(csv_trend, index=False)
+                st.download_button(
+                    "⬇️ Exporter tendance (CSV)",
+                    data=csv_trend.getvalue(),
+                    file_name=f"trend_{focus_word}_{start_date}_{end_date}.csv",
+                    mime="text/csv",
+                    key="dl_trend",
+                )
         else:
             st.info("Saisissez un mot-clé pour voir sa tendance.")
 
@@ -117,3 +128,12 @@ def render(filters: dict):
                 st.altair_chart(chart, use_container_width=True)
                 with st.expander("Voir le tableau"):
                     st.dataframe(df, use_container_width=True, hide_index=True)
+                csv_topics = StringIO()
+                df.to_csv(csv_topics, index=False)
+                st.download_button(
+                    "⬇️ Exporter sujets (CSV)",
+                    data=csv_topics.getvalue(),
+                    file_name=f"topics_{start_date}_{end_date}.csv",
+                    mime="text/csv",
+                    key="dl_topics_period",
+                )

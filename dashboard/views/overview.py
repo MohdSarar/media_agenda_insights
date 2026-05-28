@@ -1,5 +1,7 @@
 # dashboard/views/overview.py
 
+from io import StringIO
+
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -65,6 +67,15 @@ def render(filters: dict):
                     use_container_width=True,
                     hide_index=True,
                 )
+            csv_kw = StringIO()
+            df_kw.to_csv(csv_kw, index=False)
+            st.download_button(
+                "⬇️ Exporter mots-clés (CSV)",
+                data=csv_kw.getvalue(),
+                file_name=f"keywords_{selected_date}_{selected_source}.csv",
+                mime="text/csv",
+                key="dl_kw_overview",
+            )
 
     with col2:
         st.subheader(f"Sujets dominants TV — {selected_date}")
