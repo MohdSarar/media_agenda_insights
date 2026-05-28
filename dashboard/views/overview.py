@@ -1,92 +1,83 @@
 # dashboard/views/overview.py
 
-from datetime import date as date_type
-
 import streamlit as st
 import pandas as pd
 import altair as alt
 
-from dashboard.data_access import (
-    get_available_dates,
-    get_sources,
-    load_keywords_for_day,
-    load_topics_for_day,
-)
+from dashboard.data_access import get_sources, load_keywords_for_day, load_topics_for_day
+from dashboard.ui.components import section_header, kpi_row
 
 
-def render():
-    st.title("📺 Vue d'ensemble – Media Agenda du jour")
+def render(filters: dict):
+    start_date = filters["start_date"]
+    end_date = filters["end_date"]
+    selected_date = end_date
 
-    dates = get_available_dates()
-    if not dates:
-        st.error("Aucune donnée disponible dans keywords_daily.")
-        return
+    section_header(
+        "Vue d'ensemble – Agenda du jour",
+        f"Mots-clés et sujets dominants pour le {selected_date}",
+    )
 
-    min_date, max_date = dates[0], dates[-1]
+    # Source filter — inline, not sidebar
+    sources = get_sources()
+    c_src, _ = st.columns([2, 5])
+    with c_src:
+        selected_source = st.selectbox("Chaîne", sources, index=0, key="ov_source")
 
-    with st.sidebar:
-        st.header("Filtres")
-        selected_date: date_type = st.date_input(
-            "Date",
-            value=max_date,
-            min_value=min_date,
-            max_value=max_date,
-        )
+    # Load data
+    df_kw = load_keywords_for_day(selected_date, selected_source, media_type=None)
+    df_topics = load_topics_for_day(selected_date, only_tv=True)
 
-        sources = get_sources()
-        selected_source = st.selectbox("Chaîne (source)", options=sources, index=0)
+    # KPI row
+    top_word = df_kw.iloc[0]["word"] if not df_kw.empty else "—"
+    total_mentions = int(df_kw["count"].sum()) if not df_kw.empty else 0
+    kpi_row([
+        {"label": "Mots-clés", "value": len(df_kw) if not df_kw.empty else 0},
+        {"label": "Sujets TV", "value": len(df_topics) if not df_topics.empty else 0},
+        {"label": "Top mot-clé", "value": top_word[:18] if top_word != "—" else "—"},
+        {"label": "Total mentions", "value": f"{total_mentions:,}"},
+    ])
+
+    st.markdown("<div style='margin-top:1rem'></div>", unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
-    # --- Colonne 1 : Top mots-clés ---
     with col1:
-        st.subheader(f"Top mots-clés – {selected_source} – {selected_date}")
-
-        df_kw = load_keywords_for_day(selected_date, selected_source, media_type=None)
-
+        st.subheader(f"Top mots-clés — {selected_source}")
         if df_kw.empty:
             st.info("Pas de mots-clés pour cette date / source.")
         else:
-            # Affichage table
-            st.dataframe(
-                df_kw[["rank", "word", "count", "source", "media_type"]],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            # Bar chart Altair
             chart = (
-                alt.Chart(df_kw)
-                .mark_bar()
+                alt.Chart(df_kw.head(20))
+                .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
                 .encode(
-                    x=alt.X("word:N", sort="-y", title="Mot"),
-                    y=alt.Y("count:Q", title="Occurrences"),
+                    x=alt.X("count:Q", title="Occurrences"),
+                    y=alt.Y("word:N", sort="-x", title=None),
+                    color=alt.Color("source:N", legend=None),
                     tooltip=["word", "count", "source", "media_type"],
                 )
-                .properties(height=300)
+                .properties(height=350)
             )
             st.altair_chart(chart, use_container_width=True)
+            with st.expander("Voir le tableau"):
+                st.dataframe(
+                    df_kw[["rank", "word", "count", "source", "media_type"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
-    # --- Colonne 2 : Sujets du jour ---
     with col2:
-        st.subheader(f"Sujets dominants – TV – {selected_date}")
-
-        df_topics = load_topics_for_day(selected_date, only_tv=True)
+        st.subheader(f"Sujets dominants TV — {selected_date}")
         if df_topics.empty:
             st.info("Pas de sujets pour cette date.")
         else:
-            # On trie par importance (articles_count)
             df_topics = df_topics.sort_values("articles_count", ascending=False)
-
             for _, row in df_topics.iterrows():
                 with st.expander(
-                    f"Topic {int(row['topic_id'])} – {row['topic_label']} "
-                    f"(Articles : {int(row['articles_count'])})",
+                    f"Topic {int(row['topic_id'])} — {row['topic_label']}  "
+                    f"({int(row['articles_count'])} articles)",
                     expanded=False,
                 ):
-                    keywords = row["keywords"]
-                    if isinstance(keywords, (list, tuple)):
-                        kw_text = ", ".join(keywords)
-                    else:
-                        kw_text = str(keywords)
+                    kw = row["keywords"]
+                    kw_text = ", ".join(kw) if isinstance(kw, (list, tuple)) else str(kw)
                     st.markdown(f"**Mots-clés :** {kw_text}")
