@@ -391,3 +391,125 @@ def load_narrative_distribution_by_source() -> pd.DataFrame:
         """,
         conn,
     )
+
+
+@st.cache_data(ttl=900)
+def load_ner_entities(
+    start_date: date,
+    end_date: date,
+    media_type: str = "tv",
+    entity_labels: Optional[List[str]] = None,
+    top_n: int = 50,
+) -> pd.DataFrame:
+    """
+    Top named entities from articles_clean.entities (JSONB array).
+    Returns: source, media_type, entity_text, entity_label, mention_count.
+    """
+    if entity_labels is None:
+        entity_labels = ["PER", "ORG", "LOC", "MISC"]
+
+    conn = get_connection()
+    label_filter = " AND ent->>'label' = ANY(%s)" if entity_labels else ""
+
+    query = f"""
+        SELECT
+            ar.source,
+            ar.media_type,
+            (ent->>'text')  AS entity_text,
+            (ent->>'label') AS entity_label,
+            COUNT(*)        AS mention_count
+        FROM articles_raw ar
+        JOIN articles_clean ac ON ac.article_id = ar.id
+        CROSS JOIN LATERAL jsonb_array_elements(ac.entities) AS ent
+        WHERE ar.published_at::date BETWEEN %s AND %s
+          AND ar.media_type = %s
+          AND LENGTH(COALESCE(ent->>'text', '')) > 2
+          {label_filter}
+        GROUP BY ar.source, ar.media_type, entity_text, entity_label
+        ORDER BY mention_count DESC
+        LIMIT %s;
+    """
+    params = [start_date, end_date, media_type]
+    if entity_labels:
+        params.append(entity_labels)
+    params.append(top_n)
+
+    df = pd.read_sql_query(query, conn, params=params)
+    return df
+
+
+@st.cache_data(ttl=1800)
+def load_entity_trend(
+    entity_text: str,
+    start_date: date,
+    end_date: date,
+    media_type: str = "tv",
+) -> pd.DataFrame:
+    """Daily mention count of a specific entity across sources."""
+    conn = get_connection()
+    query = """
+        SELECT
+            ar.published_at::date AS date,
+            ar.source,
+            COUNT(*) AS mention_count
+        FROM articles_raw ar
+        JOIN articles_clean ac ON ac.article_id = ar.id
+        CROSS JOIN LATERAL jsonb_array_elements(ac.entities) AS ent
+        WHERE ar.published_at::date BETWEEN %s AND %s
+          AND ar.media_type = %s
+          AND LOWER(ent->>'text') = LOWER(%s)
+        GROUP BY ar.published_at::date, ar.source
+        ORDER BY date ASC, source ASC;
+    """
+    df = pd.read_sql_query(query, conn, params=[start_date, end_date, media_type, entity_text])
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+@st.cache_data(ttl=900)
+def load_entity_source_heatmap(
+    start_date: date,
+    end_date: date,
+    media_type: str = "tv",
+    entity_label: str = "PER",
+    top_n: int = 20,
+) -> pd.DataFrame:
+    """
+    Cross-source entity coverage: which sources mention which entities most.
+    Returns: entity_text, source, mention_count.
+    """
+    conn = get_connection()
+    query = """
+        WITH top_ents AS (
+            SELECT (ent->>'text') AS entity_text, COUNT(*) AS total
+            FROM articles_raw ar
+            JOIN articles_clean ac ON ac.article_id = ar.id
+            CROSS JOIN LATERAL jsonb_array_elements(ac.entities) AS ent
+            WHERE ar.published_at::date BETWEEN %s AND %s
+              AND ar.media_type = %s
+              AND ent->>'label' = %s
+              AND LENGTH(COALESCE(ent->>'text', '')) > 2
+            GROUP BY entity_text
+            ORDER BY total DESC
+            LIMIT %s
+        )
+        SELECT
+            te.entity_text,
+            ar.source,
+            COUNT(*) AS mention_count
+        FROM top_ents te
+        JOIN articles_clean ac
+          ON EXISTS (
+              SELECT 1 FROM jsonb_array_elements(ac.entities) ent
+              WHERE ent->>'text' = te.entity_text AND ent->>'label' = %s
+          )
+        JOIN articles_raw ar ON ar.id = ac.article_id
+        WHERE ar.published_at::date BETWEEN %s AND %s
+          AND ar.media_type = %s
+        GROUP BY te.entity_text, ar.source
+        ORDER BY te.entity_text, mention_count DESC;
+    """
+    params = [start_date, end_date, media_type, entity_label, top_n,
+              entity_label, start_date, end_date, media_type]
+    return pd.read_sql_query(query, conn, params=params)

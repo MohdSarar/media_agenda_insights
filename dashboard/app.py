@@ -22,6 +22,7 @@ from dashboard.views import (
     social_observable,
     agenda_gap,
     lifecycle,
+    ner_dashboard,
 )
 
 
@@ -141,6 +142,7 @@ def main():
         "💬 Social Media",
         "🔍 Agenda Gap",
         "📅 Story Lifecycle",
+        "🧬 Entités (NER)",
     ])
 
     with tabs[0]:
@@ -161,6 +163,8 @@ def main():
         agenda_gap.render(filters)
     with tabs[8]:
         lifecycle.render(filters)
+    with tabs[9]:
+        ner_dashboard.render(filters)
 
     st.divider()
     st.markdown(
