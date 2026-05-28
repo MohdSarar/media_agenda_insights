@@ -413,6 +413,7 @@ Multi-layered cleanup pipeline:
 | PostgreSQL schema with indexed analytics tables | ✅ Done |
 | NLP pipeline (Stanza + spaCy, multilingual-ready) | ✅ Done |
 | Keyword extraction (TF-IDF + advanced filtering) | ✅ Done |
+| Stopword filtering — apostrophe/elision normalization | ✅ Done |
 | Topic modeling (NMF, per-source & per-language) | ✅ Done |
 | Narrative clustering (Sentence-BERT + KMeans) | ✅ Done |
 | Media bias quantification (topic-level) | ✅ Done |
@@ -422,28 +423,28 @@ Multi-layered cleanup pipeline:
 | **Isolated analytics pipeline for international media** | ✅ Done |
 | Streamlit analytical dashboard (modular views) | ✅ Done |
 | Airflow / Prefect ready | ✅ Done |
+| Social media ingestion (Reddit) | ✅ Done |
 | Full HTML article scraping | 🔜 Planned |
-| Social media ingestion (Reddit, Mastodon) | 🔜 Planned |
 | LLM-based topic labeling | 🔜 Planned |
 | Docker containerization | ✅ Done |
 
 
 ---
 
-## Roadmap — Next Features
+## Roadmap — Analyst Features
 
-Features identified as high-value for journalists and researchers:
+Features for journalists and researchers — all implemented as dedicated dashboard tabs:
 
-| # | Feature | Target users | Priority |
-|---|---------|-------------|----------|
-| 1 | **Agenda Gap Detector** — surface topics high on social but ignored by TV (and vice versa) | Journalists | 🔴 High |
-| 2 | **Story Lifecycle Tracker** — Gantt-style timeline showing when each topic appeared, peaked and faded | Journalists | 🔴 High |
-| 3 | **CSV / permalink export** — filtered data export + shareable URL to any view state | Researchers | 🔴 High |
-| 4 | **Named Entity Recognition (NER) dashboard** — track which people, organizations and places are mentioned most, by whom | Both | 🟠 Medium-High |
-| 5 | **Narrative Divergence Score** — quantify how differently channels cover the same topic (0–1 editorial distance) | Both | 🟠 Medium-High |
-| 6 | **Framing Analysis** — classify coverage of a topic by frame (security / economic / humanitarian / legal) with visual breakdown | Researchers | 🟠 Medium |
-| 7 | **Inter-media Lead/Lag Analysis** — detect whether social media precedes TV on a topic or the reverse (cross-correlation) | Researchers | 🟡 Medium |
-| 8 | **Watchlist / Keyword Alerts** — let users define a set of topics to monitor; dedicated tab + spike notifications | Journalists | 🟡 Medium |
+| # | Feature | Tab | Target users | Status |
+|---|---------|-----|-------------|--------|
+| 1 | **Agenda Gap Detector** — surface topics high on social but ignored by TV (and vice versa) | 🔍 Agenda Gap | Journalists | ✅ Done |
+| 2 | **Story Lifecycle Tracker** — Gantt timeline showing when each topic appeared, peaked and faded | 📅 Story Lifecycle | Journalists | ✅ Done |
+| 3 | **CSV / permalink export** — filtered data export + shareable URL to any view state | All tabs | Researchers | ✅ Done |
+| 4 | **NER dashboard** — track which people, organizations and places are mentioned most, by whom | 🧬 Entités (NER) | Both | ✅ Done |
+| 5 | **Narrative Divergence Score** — Jensen-Shannon divergence between channel keyword distributions (0–1) | 📐 Divergence | Both | ✅ Done |
+| 6 | **Framing Analysis** — classify coverage by frame (security / economic / humanitarian…) with visual breakdown | 🖼️ Framing | Researchers | ✅ Done |
+| 7 | **Inter-media Lead/Lag** — detect whether social or TV leads coverage of a topic (cross-correlation) | ⏱️ Lead/Lag | Researchers | ✅ Done |
+| 8 | **Watchlist / Keyword Alerts** — monitor chosen topics, automatic spike detection with Z-score | 📋 Watchlist | Journalists | ✅ Done |
 
 ---
 

@@ -23,6 +23,10 @@ from dashboard.views import (
     agenda_gap,
     lifecycle,
     ner_dashboard,
+    divergence,
+    framing,
+    lead_lag,
+    watchlist,
 )
 
 
@@ -143,6 +147,10 @@ def main():
         "🔍 Agenda Gap",
         "📅 Story Lifecycle",
         "🧬 Entités (NER)",
+        "📐 Divergence",
+        "🖼️ Framing",
+        "⏱️ Lead/Lag",
+        "📋 Watchlist",
     ])
 
     with tabs[0]:
@@ -165,6 +173,14 @@ def main():
         lifecycle.render(filters)
     with tabs[9]:
         ner_dashboard.render(filters)
+    with tabs[10]:
+        divergence.render(filters)
+    with tabs[11]:
+        framing.render(filters)
+    with tabs[12]:
+        lead_lag.render(filters)
+    with tabs[13]:
+        watchlist.render(filters)
 
     st.divider()
     st.markdown(

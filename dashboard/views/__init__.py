@@ -9,4 +9,8 @@ from dashboard.views import (  # noqa: F401
     agenda_gap,
     lifecycle,
     ner_dashboard,
+    divergence,
+    framing,
+    lead_lag,
+    watchlist,
 )
