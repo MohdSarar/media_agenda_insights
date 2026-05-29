@@ -59,25 +59,28 @@ header {visibility: hidden;}
 }
 
 /* ============================================
-   TABS
+   TABS — compact to fit many tabs on one row
    ============================================ */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 6px;
+    gap: 2px;
     background: var(--bg-card);
-    padding: 0.4rem;
+    padding: 0.3rem;
     border-radius: 12px;
     border: 1px solid var(--border);
+    flex-wrap: wrap;          /* tabs wrap to a second line if needed */
+    row-gap: 4px;
 }
 .stTabs [data-baseweb="tab"] {
-    height: 40px;
-    padding: 0 18px;
-    border-radius: 8px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 6px;
     color: var(--text-secondary);
     background: transparent;
     border: none;
     font-weight: 500;
-    font-size: 0.875rem;
+    font-size: 0.72rem;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 .stTabs [data-baseweb="tab"]:hover {
     background: var(--bg-hover);

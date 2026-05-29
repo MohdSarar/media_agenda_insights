@@ -188,7 +188,7 @@ def render(filters: dict) -> None:
             y=alt.Y("source:N", title=None),
             color=alt.Color(
                 "intensity:Q",
-                scale=alt.Scale(scheme="purpleblue", domain=[0, 1]),
+                scale=alt.Scale(scheme="bluepurple", domain=[0, 1]),
                 legend=alt.Legend(title="Intensité"),
             ),
             tooltip=[

@@ -86,7 +86,7 @@ def render(filters: dict) -> None:
             ),
             color=alt.Color(
                 "intensity:Q",
-                scale=alt.Scale(scheme="purpleblue", domain=[0, 1]),
+                scale=alt.Scale(scheme="bluepurple", domain=[0, 1]),
                 legend=alt.Legend(title="Intensité (mentions)", orient="bottom"),
             ),
             tooltip=[

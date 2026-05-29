@@ -268,7 +268,7 @@ def _render_heatmap_tab(start: date, end: date, media_type: str) -> None:
                     sort=alt.EncodingSortField("mention_count", op="sum", order="descending")),
             color=alt.Color(
                 "mention_count:Q",
-                scale=alt.Scale(scheme="purpleblue"),
+                scale=alt.Scale(scheme="bluepurple"),
                 legend=alt.Legend(title="Mentions"),
             ),
             tooltip=[
