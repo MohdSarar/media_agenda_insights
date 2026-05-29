@@ -184,7 +184,7 @@ def load_topics_range(
     conn = get_connection()
     query = """
         SELECT
-            topic_label,
+            COALESCE(llm_label, topic_label) AS topic_label,
             SUM(articles_count) AS total_articles,
             COUNT(DISTINCT date)  AS days_active,
             MIN(date)             AS first_seen,
@@ -195,7 +195,7 @@ def load_topics_range(
           AND source = 'ALL'
           AND topic_label IS NOT NULL
           AND topic_label <> ''
-        GROUP BY topic_label
+        GROUP BY COALESCE(llm_label, topic_label)
         ORDER BY total_articles DESC
         LIMIT %s;
     """
@@ -309,7 +309,7 @@ def load_lifecycle(start_date: date, end_date: date, top_n: int = 30) -> pd.Data
 @st.cache_data(ttl=900)
 def load_topics_for_day(selected_date: date, only_tv: bool = True) -> pd.DataFrame:
     conn = get_connection()
-    query = "SELECT date, source, media_type, topic_id, topic_label, articles_count, keywords FROM topics_daily WHERE date = %s"
+    query = "SELECT date, source, media_type, topic_id, COALESCE(llm_label, topic_label) AS topic_label, articles_count, keywords FROM topics_daily WHERE date = %s"
     params: List = [selected_date]
 
     if only_tv:
