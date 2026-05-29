@@ -700,7 +700,7 @@ def _ensure_watchlist_tables(conn) -> None:
     cur.close()
 
 
-def load_watchlist_terms() -> list[str]:
+def load_watchlist_terms() -> List[str]:
     """Return watchlist terms from DB (no caching — always fresh)."""
     try:
         conn = get_connection()
