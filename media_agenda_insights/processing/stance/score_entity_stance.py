@@ -58,10 +58,10 @@ NEGATIVE = frozenset([
 ])
 
 
-def _score_lemmas(lemmas: list[str]) -> tuple[int, int]:
+def _score_lemmas(lemmas: list) -> tuple[int, int]:
     """Return (positive_count, negative_count) for a lemma list."""
-    pos = sum(1 for l in lemmas if l.lower() in POSITIVE)
-    neg = sum(1 for l in lemmas if l.lower() in NEGATIVE)
+    pos = sum(1 for l in lemmas if l and l.lower() in POSITIVE)
+    neg = sum(1 for l in lemmas if l and l.lower() in NEGATIVE)
     return pos, neg
 
 
