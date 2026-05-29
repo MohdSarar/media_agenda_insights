@@ -85,6 +85,8 @@ def cleanup_old_full_text() -> None:
     with get_conn() as conn:
         conn.autocommit = False
         cur = conn.cursor()
+        _ensure_full_text_column(cur)
+        conn.commit()
         cur.execute(
             """
             UPDATE articles_raw
