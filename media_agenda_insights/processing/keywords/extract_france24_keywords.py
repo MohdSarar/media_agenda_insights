@@ -192,8 +192,10 @@ def compute_france24_keywords_daily() -> None:
                 if not counter:
                     continue
 
-                top10 = counter.most_common(int(CONFIG["keywords"]["top_n"]))
-                for rank, (word, count) in enumerate(top10, start=1):
+                min_count = int(CONFIG["keywords"]["min_count"])
+                for rank, (word, count) in enumerate(counter.most_common(), start=1):
+                    if count < min_count:
+                        break
                     rows_to_insert.append(
                         (date, source, lang, word, count, rank)
                     )

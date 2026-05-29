@@ -10,7 +10,7 @@ spikes:
   baseline_window: 3
 
 keywords:
-  top_n: 30
+  min_count: 2
 
 http:
   timeout_seconds: 15

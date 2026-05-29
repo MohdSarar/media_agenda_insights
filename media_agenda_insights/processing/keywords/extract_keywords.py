@@ -133,8 +133,10 @@ def compute_keywords_daily() -> None:
                 per_date_media[(date, media_type)] += counter
                 per_date_all[date] += counter
 
-                top10 = counter.most_common(int(CONFIG["keywords"]["top_n"]))
-                for rank, (word, count) in enumerate(top10, start=1):
+                min_count = int(CONFIG["keywords"]["min_count"])
+                for rank, (word, count) in enumerate(counter.most_common(), start=1):
+                    if count < min_count:
+                        break
                     rows_to_insert.append(
                         (date, source, media_type, word, count, rank)
                     )
@@ -143,8 +145,10 @@ def compute_keywords_daily() -> None:
             for (date, media_type), counter in per_date_media.items():
                 if date in done_dates:
                     continue
-                top10 = counter.most_common(int(CONFIG["keywords"]["top_n"]))
-                for rank, (word, count) in enumerate(top10, start=1):
+                min_count = int(CONFIG["keywords"]["min_count"])
+                for rank, (word, count) in enumerate(counter.most_common(), start=1):
+                    if count < min_count:
+                        break
                     rows_to_insert.append(
                         (date, "ALL", media_type, word, count, rank)
                     )
@@ -153,8 +157,10 @@ def compute_keywords_daily() -> None:
             for date, counter in per_date_all.items():
                 if date in done_dates:
                     continue
-                top10 = counter.most_common(int(CONFIG["keywords"]["top_n"]))
-                for rank, (word, count) in enumerate(top10, start=1):
+                min_count = int(CONFIG["keywords"]["min_count"])
+                for rank, (word, count) in enumerate(counter.most_common(), start=1):
+                    if count < min_count:
+                        break
                     rows_to_insert.append(
                         (date, "ALL", "ALL", word, count, rank)
                     )

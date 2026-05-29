@@ -290,10 +290,10 @@ def main() -> None:
 
             terms = vec.get_feature_names_out()
             scores = X.mean(axis=0).A1
-            top_idx = scores.argsort()[::-1][:TOP_K]
+            ranked_idx = scores.argsort()[::-1]
             n_docs = len(texts)
 
-            for i in top_idx:
+            for i in ranked_idx:
                 kw = terms[i]
                 sc = float(scores[i])
                 if sc <= 0:
