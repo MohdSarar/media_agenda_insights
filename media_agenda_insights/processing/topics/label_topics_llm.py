@@ -78,7 +78,20 @@ async def _run_async(
     # 50 RPM limit → each worker must wait 1.2s × concurrency after completing,
     # so total throughput = concurrency / (api_time + delay) ≤ 50/60 req/s
     delay = 1.2 * concurrency
-    tasks = [_call_llm(client, sem, key, kw, lang, delay) for key, kw, lang in pairs]
+    total = len(pairs)
+    done_count = 0
+    lock = asyncio.Lock()
+
+    async def _tracked(key, kw, lang):
+        nonlocal done_count
+        result = await _call_llm(client, sem, key, kw, lang, delay)
+        async with lock:
+            done_count += 1
+            if done_count % 50 == 0 or done_count == total:
+                logger.info(f"  progress: {done_count}/{total} labels generated")
+        return result
+
+    tasks = [_tracked(key, kw, lang) for key, kw, lang in pairs]
     results = await asyncio.gather(*tasks)
     # Only keep successful labels (None = failed, will be retried on next run)
     return {k: v for k, v in results if v is not None}
