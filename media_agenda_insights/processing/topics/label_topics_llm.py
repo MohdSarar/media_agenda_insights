@@ -82,8 +82,21 @@ async def _run_batch(
     sem = asyncio.Semaphore(concurrency)
     # 50 RPM: each worker waits 1.2s × concurrency so total rate ≤ 50/60 req/s
     delay = 1.2 * concurrency
+    total = len(pairs)
+    done = 0
+    lock = asyncio.Lock()
+
+    async def _tracked(key, kw, lang):
+        nonlocal done
+        result = await _call_llm(client, sem, key, kw, lang, delay)
+        async with lock:
+            done += 1
+            if done % 10 == 0 or done == total:
+                logger.info(f"    {done}/{total} in batch")
+        return result
+
     results = await asyncio.gather(
-        *[_call_llm(client, sem, key, kw, lang, delay) for key, kw, lang in pairs]
+        *[_tracked(key, kw, lang) for key, kw, lang in pairs]
     )
     return {k: v for k, v in results if v is not None}
 
