@@ -28,6 +28,7 @@ from dashboard.views import (
     lead_lag,
     watchlist,
     stance,
+    digest,
 )
 
 
@@ -153,6 +154,7 @@ def main():
         "⏱️ Lead/Lag",
         "📋 Watchlist",
         "🎭 Stance entités",
+        "📰 Digest",
     ])
 
     with tabs[0]:
@@ -185,6 +187,8 @@ def main():
         watchlist.render(filters)
     with tabs[14]:
         stance.render(filters)
+    with tabs[15]:
+        digest.render(filters)
 
     st.divider()
     st.markdown(

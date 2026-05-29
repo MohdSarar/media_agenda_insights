@@ -14,4 +14,5 @@ from dashboard.views import (  # noqa: F401
     lead_lag,
     watchlist,
     stance,
+    digest,
 )

@@ -293,3 +293,13 @@ CREATE TABLE IF NOT EXISTS entity_stance_daily (
 
 CREATE INDEX IF NOT EXISTS idx_esd_date_source ON entity_stance_daily (date, source);
 CREATE INDEX IF NOT EXISTS idx_esd_entity      ON entity_stance_daily (entity_text);
+
+-- Weekly LLM-generated editorial digests (produced by processing/digest/generate_weekly_digest.py)
+CREATE TABLE IF NOT EXISTS weekly_digests (
+  id           BIGSERIAL PRIMARY KEY,
+  week_start   DATE NOT NULL UNIQUE,
+  week_end     DATE NOT NULL,
+  digest_text  TEXT NOT NULL,
+  context_json JSONB,
+  generated_at TIMESTAMP DEFAULT NOW()
+);

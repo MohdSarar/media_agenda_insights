@@ -678,6 +678,25 @@ def load_entity_stance_trend(
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=1800)
+def load_weekly_digests(limit: int = 12) -> pd.DataFrame:
+    """Return the most recent weekly digests."""
+    conn = get_connection()
+    try:
+        return pd.read_sql_query(
+            """
+            SELECT week_start, week_end, digest_text, context_json, generated_at
+            FROM weekly_digests
+            ORDER BY week_start DESC
+            LIMIT %s
+            """,
+            conn,
+            params=[limit],
+        )
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=3600)
 def load_dashboard_config() -> dict:
     """Load pipeline.yaml — used to read config thresholds in dashboard views."""
