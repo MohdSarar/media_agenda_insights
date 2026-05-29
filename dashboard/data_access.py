@@ -786,13 +786,21 @@ def load_weekly_digests(limit: int = 12) -> pd.DataFrame:
 def load_dashboard_config() -> dict:
     """Load pipeline.yaml — used to read config thresholds in dashboard views."""
     from pathlib import Path
-    import yaml
+    try:
+        import yaml
+    except ImportError:
+        yaml = None  # type: ignore[assignment]
+
     for parent in Path(__file__).parents:
         candidate = parent / "media_agenda_insights" / "infra" / "config" / "pipeline.yaml"
         if candidate.exists():
-            try:
-                with open(candidate, encoding="utf-8") as f:
-                    return yaml.safe_load(f) or {}
-            except Exception:
-                return {}
-    return {}
+            if yaml is not None:
+                try:
+                    with open(candidate, encoding="utf-8") as f:
+                        return yaml.safe_load(f) or {}
+                except Exception:
+                    pass
+            break
+
+    # Fallback: hardcoded defaults matching pipeline.yaml values
+    return {"retention": {"raw_days": 90}, "confidence": {"min_n": 8}}
