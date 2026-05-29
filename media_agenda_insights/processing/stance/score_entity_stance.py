@@ -28,8 +28,6 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.db import get_conn  # noqa: E402
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -87,6 +85,7 @@ def _ensure_table(cur) -> None:
 
 def score_range(start: date, end: date, dry_run: bool = False) -> int:
     """Score entities for every day in [start, end]. Returns total rows upserted."""
+    from core.db import get_conn
     with get_conn() as conn:
         conn.autocommit = False
         cur = conn.cursor()

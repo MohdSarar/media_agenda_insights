@@ -26,13 +26,9 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-import anthropic
-
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from core.db import get_conn  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -146,10 +142,11 @@ Commence directement par le premier «•»."""
 
 
 def _call_llm(prompt: str) -> str:
+    import anthropic as _anthropic
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set.")
-    client = anthropic.Anthropic(api_key=api_key)
+    client = _anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
@@ -159,6 +156,7 @@ def _call_llm(prompt: str) -> str:
 
 
 def generate(week_start: date, dry_run: bool = False) -> str:
+    from core.db import get_conn
     start, end = _week_bounds(week_start)
     logger.info("Generating digest for week %s → %s", start, end)
 
