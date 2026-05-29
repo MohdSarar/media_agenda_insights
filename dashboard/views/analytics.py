@@ -9,8 +9,11 @@ from dashboard.ui.components import section_header, kpi_row
 
 
 def _load(query: str, params=None) -> pd.DataFrame:
-    conn = get_connection()
-    return pd.read_sql(query, conn, params=params)
+    try:
+        conn = get_connection()
+        return pd.read_sql(query, conn, params=params)
+    except Exception:
+        return pd.DataFrame()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
