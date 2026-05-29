@@ -118,52 +118,59 @@ def label_table(
     """
     Labels all unlabeled rows in `table`.
     Returns the number of unique API calls made (or that would be made in dry-run).
+
+    Uses three short-lived DB connections so the connection is never held open
+    during the LLM phase (Neon closes idle connections after ~5 minutes).
     """
+    # Phase 1 — read (short connection)
     with get_conn() as conn:
         conn.autocommit = False
         cur = conn.cursor()
-
         _ensure_llm_label_column(cur, table)
         conn.commit()
-
         rows = _fetch_unlabeled(cur, table, lang_col)
-        if not rows:
-            logger.info(f"{table}: all rows already labeled.")
-            cur.close()
-            return 0
+        cur.close()
+    # connection released here
 
-        # Deduplicate on (sorted keywords, lang) — same content = one API call
-        unique: dict[tuple, tuple[list[str], str]] = {}
-        for row in rows:
-            key = (tuple(sorted(row["kw"])), row["lang"])
-            if key not in unique:
-                unique[key] = (row["kw"], row["lang"])
+    if not rows:
+        logger.info(f"{table}: all rows already labeled.")
+        return 0
 
-        logger.info(f"{table}: {len(rows)} rows → {len(unique)} unique keyword sets.")
+    # Deduplicate on (sorted keywords, lang) — same content = one API call
+    unique: dict[tuple, tuple[list[str], str]] = {}
+    for row in rows:
+        key = (tuple(sorted(row["kw"])), row["lang"])
+        if key not in unique:
+            unique[key] = (row["kw"], row["lang"])
 
-        if dry_run:
-            for key, (kw, lang) in list(unique.items())[:3]:
-                logger.info(f"  sample [{lang}]: {kw[:5]}")
-            cur.close()
-            return len(unique)
+    logger.info(f"{table}: {len(rows)} rows → {len(unique)} unique keyword sets.")
 
-        # Generate labels via Claude Haiku
-        pairs = [(k, kw, lang) for k, (kw, lang) in unique.items()]
-        label_map = asyncio.run(_run_async(pairs, concurrency=concurrency))
+    if dry_run:
+        for key, (kw, lang) in list(unique.items())[:3]:
+            logger.info(f"  sample [{lang}]: {kw[:5]}")
+        return len(unique)
 
-        # Map back to row ids — skip rows whose label failed (keep llm_label NULL for retry)
-        updates = []
-        skipped = 0
-        for row in rows:
-            key = (tuple(sorted(row["kw"])), row["lang"])
-            label = label_map.get(key)
-            if label is None:
-                skipped += 1
-                continue
-            updates.append((label, row["id"]))
-        if skipped:
-            logger.info(f"{table}: {skipped} rows skipped (API failure) — will retry on next run.")
+    # Phase 2 — LLM calls (no DB connection held)
+    pairs = [(k, kw, lang) for k, (kw, lang) in unique.items()]
+    label_map = asyncio.run(_run_async(pairs, concurrency=concurrency))
 
+    # Map back to row ids — skip rows whose label failed (keep llm_label NULL for retry)
+    updates = []
+    skipped = 0
+    for row in rows:
+        key = (tuple(sorted(row["kw"])), row["lang"])
+        label = label_map.get(key)
+        if label is None:
+            skipped += 1
+            continue
+        updates.append((label, row["id"]))
+    if skipped:
+        logger.info(f"{table}: {skipped} rows skipped (API failure) — will retry on next run.")
+
+    # Phase 3 — write results (fresh connection)
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
         execute_batch(
             cur,
             f"UPDATE {table} SET llm_label = %s WHERE id = %s",
@@ -173,4 +180,5 @@ def label_table(
         conn.commit()
         logger.info(f"{table}: {len(updates)} llm_label values written.")
         cur.close()
-        return len(unique)
+
+    return len(unique)
