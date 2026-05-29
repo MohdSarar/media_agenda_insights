@@ -27,6 +27,7 @@ from dashboard.views import (
     framing,
     lead_lag,
     watchlist,
+    stance,
 )
 
 
@@ -151,6 +152,7 @@ def main():
         "🖼️ Framing",
         "⏱️ Lead/Lag",
         "📋 Watchlist",
+        "🎭 Stance entités",
     ])
 
     with tabs[0]:
@@ -181,6 +183,8 @@ def main():
         lead_lag.render(filters)
     with tabs[13]:
         watchlist.render(filters)
+    with tabs[14]:
+        stance.render(filters)
 
     st.divider()
     st.markdown(

@@ -584,6 +584,100 @@ def count_articles_by_source(
         return {}
 
 
+@st.cache_data(ttl=900)
+def load_entity_stance(
+    start_date: date,
+    end_date: date,
+    entity_label: Optional[str] = None,
+    top_n: int = 30,
+) -> pd.DataFrame:
+    """
+    Aggregated stance scores from entity_stance_daily.
+    Returns: entity_text, entity_label, source, positive_count,
+             negative_count, mention_count, net_score.
+    net_score ∈ [-1, 1]: positive = favourable coverage, negative = critical.
+    """
+    conn = get_connection()
+    label_clause = "AND entity_label = %s" if entity_label else ""
+    query = f"""
+        WITH agg AS (
+            SELECT
+                entity_text,
+                entity_label,
+                source,
+                SUM(positive_count) AS positive_count,
+                SUM(negative_count) AS negative_count,
+                SUM(mention_count)  AS mention_count
+            FROM entity_stance_daily
+            WHERE date BETWEEN %s AND %s
+              {label_clause}
+            GROUP BY entity_text, entity_label, source
+        ),
+        top_ents AS (
+            SELECT entity_text
+            FROM agg
+            GROUP BY entity_text
+            ORDER BY SUM(mention_count) DESC
+            LIMIT %s
+        )
+        SELECT
+            a.entity_text,
+            a.entity_label,
+            a.source,
+            a.positive_count,
+            a.negative_count,
+            a.mention_count,
+            ROUND(
+                (a.positive_count - a.negative_count)::numeric
+                / NULLIF(a.mention_count, 0), 4
+            )::float AS net_score
+        FROM agg a
+        JOIN top_ents t USING (entity_text)
+        ORDER BY a.mention_count DESC, a.entity_text;
+    """
+    params: list = [start_date, end_date]
+    if entity_label:
+        params.append(entity_label)
+    params.append(top_n)
+    try:
+        return pd.read_sql_query(query, conn, params=params)
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=900)
+def load_entity_stance_trend(
+    entity_text: str,
+    start_date: date,
+    end_date: date,
+) -> pd.DataFrame:
+    """Daily net_score trend for a specific entity, broken down by source."""
+    conn = get_connection()
+    query = """
+        SELECT
+            date,
+            source,
+            positive_count,
+            negative_count,
+            mention_count,
+            ROUND(
+                (positive_count - negative_count)::numeric
+                / NULLIF(mention_count, 0), 4
+            )::float AS net_score
+        FROM entity_stance_daily
+        WHERE LOWER(entity_text) = LOWER(%s)
+          AND date BETWEEN %s AND %s
+        ORDER BY date ASC, source ASC;
+    """
+    try:
+        df = pd.read_sql_query(query, conn, params=[entity_text, start_date, end_date])
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=3600)
 def load_dashboard_config() -> dict:
     """Load pipeline.yaml — used to read config thresholds in dashboard views."""

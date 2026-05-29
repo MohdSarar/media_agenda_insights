@@ -277,3 +277,19 @@ CREATE TABLE IF NOT EXISTS social_topics_daily (
   n_docs INT,
   UNIQUE (date, platform, source, lang, topic_id)
 );
+
+-- Entity stance scores (produced by processing/stance/score_entity_stance.py)
+CREATE TABLE IF NOT EXISTS entity_stance_daily (
+  id             BIGSERIAL PRIMARY KEY,
+  entity_text    TEXT NOT NULL,
+  entity_label   TEXT NOT NULL,
+  source         TEXT NOT NULL,
+  date           DATE NOT NULL,
+  positive_count INT  NOT NULL DEFAULT 0,
+  negative_count INT  NOT NULL DEFAULT 0,
+  mention_count  INT  NOT NULL DEFAULT 0,
+  UNIQUE (entity_text, entity_label, source, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_esd_date_source ON entity_stance_daily (date, source);
+CREATE INDEX IF NOT EXISTS idx_esd_entity      ON entity_stance_daily (entity_text);
