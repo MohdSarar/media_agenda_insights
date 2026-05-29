@@ -12,6 +12,26 @@ from dashboard.data_access import load_weekly_digests
 from dashboard.ui.components import section_header
 
 
+def _generate_digest(ref_date):
+    import sys
+    from pathlib import Path
+    inner = Path(__file__).resolve().parents[2] / "media_agenda_insights"
+    if str(inner) not in sys.path:
+        sys.path.insert(0, str(inner))
+    try:
+        from processing.digest.generate_weekly_digest import generate
+        with st.spinner("Génération du digest IA en cours…"):
+            text = generate(ref_date)
+        if text:
+            st.success("Digest généré. Rechargement…")
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.warning("Pas assez de données pour générer un digest cette semaine.")
+    except Exception as exc:
+        st.error(f"Erreur lors de la génération : {exc}")
+
+
 def render(filters: dict) -> None:
     section_header(
         "Digest hebdomadaire",
@@ -29,14 +49,16 @@ def render(filters: dict) -> None:
         """
     )
 
-    with st.spinner("Chargement des digests…"):
-        df = load_weekly_digests(limit=12)
+    col_load, col_gen = st.columns([4, 1])
+    with col_load:
+        with st.spinner("Chargement des digests…"):
+            df = load_weekly_digests(limit=12)
+    with col_gen:
+        if st.button("✨ Générer maintenant", key="digest_gen_btn"):
+            _generate_digest(filters.get("end_date", date.today()))
 
     if df.empty:
-        st.info(
-            "Aucun digest disponible. "
-            "Lancez : `python processing/digest/generate_weekly_digest.py`"
-        )
+        st.info("Aucun digest disponible. Cliquez sur **✨ Générer maintenant** pour en créer un.")
         return
 
     # ── Week selector ─────────────────────────────────────────────────────────

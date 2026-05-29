@@ -17,6 +17,24 @@ from dashboard.data_access import (
 )
 from dashboard.ui.components import section_header, render_confidence
 
+def _compute_stance(start, end):
+    """Run stance scoring inline and refresh the page."""
+    import sys
+    from pathlib import Path
+    inner = Path(__file__).resolve().parents[2] / "media_agenda_insights"
+    if str(inner) not in sys.path:
+        sys.path.insert(0, str(inner))
+    try:
+        from processing.stance.score_entity_stance import score_range
+        with st.spinner("Calcul des scores de stance en cours…"):
+            n = score_range(start, end)
+        st.success(f"{n:,} enregistrements calculés. Rechargement…")
+        st.cache_data.clear()
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Erreur lors du calcul : {exc}")
+
+
 _LABEL_META = {
     "PER":  {"icon": "👤", "name": "Personnes"},
     "ORG":  {"icon": "🏛️", "name": "Organisations"},
@@ -76,11 +94,9 @@ def render(filters: dict) -> None:
         counts = count_articles_by_source(start, end)
 
     if df.empty:
-        st.info(
-            "Aucune donnée de stance pour cette période. "
-            "Lancez d'abord : `python processing/stance/score_entity_stance.py "
-            f"--start {start} --end {end}`"
-        )
+        st.info("Aucune donnée de stance pour cette période.")
+        if st.button("🔄 Calculer les scores maintenant", key="stance_compute_btn"):
+            _compute_stance(start, end)
         return
 
     if counts:
@@ -240,6 +256,10 @@ def render(filters: dict) -> None:
             )
             src_agg["score_moyen"] = src_agg["score_moyen"].round(3)
             st.dataframe(src_agg, use_container_width=True, hide_index=True)
+
+    # ── Recompute button ─────────────────────────────────────────────────────
+    if st.button("🔄 Recalculer pour cette période", key="stance_recompute_btn"):
+        _compute_stance(start, end)
 
     # ── Export ────────────────────────────────────────────────────────────────
     st.markdown("---")

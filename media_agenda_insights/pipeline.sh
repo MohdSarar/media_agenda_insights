@@ -134,6 +134,28 @@ run_module_if_exists "processing/lifetime/keyword_lifetime.py" "processing.lifet
 run_module_if_exists "processing/lifetime/topic_lifetime.py"   "processing.lifetime.topic_lifetime"   "Lifetime topics"
 run_module_if_exists "processing/lifetime/theme_lifetime.py"   "processing.lifetime.theme_lifetime"   "Lifetime themes"
 
+# 4.9 Entity stance scoring (last 3 days, idempotent ON CONFLICT)
+if [ -f "processing/stance/score_entity_stance.py" ]; then
+    echo "=== Étape 9 : Entity Stance Scoring ==="
+    START_DATE=$($PYTHON -c "from datetime import date, timedelta; print(date.today() - timedelta(days=3))")
+    $PYTHON processing/stance/score_entity_stance.py --start "$START_DATE"
+fi
+
+# 4.10 Watchlist alerts (daily, sends Telegram if TELEGRAM_BOT_TOKEN is set)
+if [ -f "alerts/send_alerts.py" ]; then
+    echo "=== Étape 10 : Envoi des alertes watchlist ==="
+    $PYTHON alerts/send_alerts.py
+fi
+
+# 4.11 Weekly digest (Mondays only, idempotent per week)
+if [ -f "processing/digest/generate_weekly_digest.py" ]; then
+    DOW=$(date +%u 2>/dev/null || python3 -c "import datetime; print(datetime.date.today().isoweekday())")
+    if [ "$DOW" = "1" ]; then
+        echo "=== Étape 11 : Digest hebdomadaire ==="
+        $PYTHON processing/digest/generate_weekly_digest.py
+    fi
+fi
+
 # Optional: purge raw rows older than retention.raw_days (default 90 days).
 # Uncomment to enable automatic cleanup at end of each pipeline run.
 # $PYTHON purge_old_data.py --confirm
