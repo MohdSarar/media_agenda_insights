@@ -19,3 +19,6 @@ http:
   backoff_max_seconds: 20
   retry_status_codes: [429, 500, 502, 503, 504]
   user_agent: "MediaAgendaInsights/1.0 (+https://github.com/...)"
+
+retention:
+  raw_days: 90   # delete raw rows older than this; analytics tables are never purged
