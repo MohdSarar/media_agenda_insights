@@ -178,14 +178,8 @@ def render(filters: dict) -> None:
                         alt.Chart(daily)
                         .mark_area(
                             line={"color": label_color, "strokeWidth": 2},
-                            color=alt.Gradient(
-                                gradient="linear",
-                                stops=[
-                                    alt.GradientStop(color=label_color + "40", offset=0),
-                                    alt.GradientStop(color=label_color + "00", offset=1),
-                                ],
-                                x1=1, x2=1, y1=1, y2=0,
-                            ),
+                            color=label_color,
+                            opacity=0.15,
                         )
                         .encode(
                             x=alt.X("date:T", title=None, axis=alt.Axis(format="%d %b", labelFontSize=9)),

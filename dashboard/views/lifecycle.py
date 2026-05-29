@@ -74,7 +74,7 @@ def render(filters: dict) -> None:
 
     gantt_bars = (
         alt.Chart(df)
-        .mark_bar(height=14, cornerRadiusEnd=4, cornerRadiusStart=4)
+        .mark_bar(height=14, cornerRadius=4)
         .encode(
             x=alt.X("first_seen:T", title="Date", axis=alt.Axis(format="%d %b", labelColor="#94a3b8", titleColor="#94a3b8")),
             x2=alt.X2("last_seen:T"),
