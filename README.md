@@ -47,7 +47,7 @@
 
 **Media Agenda Insights** is a fully automated system that monitors French media (TV channels and press outlets), processes content with industrial-grade NLP, and delivers actionable insights:
 
-- **Top 10 keywords** per media outlet per day
+- **All significant keywords** per media outlet per day (frequency-threshold based, no rank cap)
 - **Topic clusters** via NMF (Non-negative Matrix Factorization) modeling
 - **Narrative clusters** using sentence embeddings and KMeans
 - **Cross-media comparisons** and editorial bias visualizations
@@ -330,6 +330,17 @@ python processing/topics/extract_topics.py
 python processing/narratives/embed_and_cluster.py
 ```
 
+### Keyword Backfill (re-index from scratch)
+
+Use this after changing `keywords.min_count` in `infra/config/pipeline.yaml`:
+
+```bash
+python backfill_keywords.py --dry-run   # preview counts, no changes
+python backfill_keywords.py --confirm   # truncate keyword tables and re-extract
+```
+
+Only `keywords_daily` and `keywords_daily_f24` are touched. All article data is safe.
+
 ### Launch Dashboard
 
 ```bash
@@ -398,7 +409,7 @@ Multi-layered cleanup pipeline:
 
 | View | Description |
 |------|-------------|
-| **Overview** | Daily top 10 keywords, topic summaries, article counts |
+| **Overview** | Daily top keywords, topic summaries, article counts |
 | **Compare Media** | Cross-outlet heatmaps, timeline comparisons, coverage divergences |
 | **Narrative Explorer** | Cluster list, keyword composition, per-source distribution |
 | **Media Bias Radar** | Radar chart of semantic focus areas across outlets |
@@ -412,8 +423,9 @@ Multi-layered cleanup pipeline:
 | Modular ETL pipeline (TV & press RSS) | ✅ Done |
 | PostgreSQL schema with indexed analytics tables | ✅ Done |
 | NLP pipeline (Stanza + spaCy, multilingual-ready) | ✅ Done |
-| Keyword extraction (TF-IDF + advanced filtering) | ✅ Done |
+| Keyword extraction — frequency-threshold (min_count), no rank cap | ✅ Done |
 | Stopword filtering — apostrophe/elision normalization | ✅ Done |
+| Keyword backfill script — safe re-indexing without touching source data | ✅ Done |
 | Topic modeling (NMF, per-source & per-language) | ✅ Done |
 | Narrative clustering (Sentence-BERT + KMeans) | ✅ Done |
 | Media bias quantification (topic-level) | ✅ Done |
