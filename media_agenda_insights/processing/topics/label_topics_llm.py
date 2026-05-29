@@ -3,6 +3,9 @@
 # Generates human-readable topic labels via Claude Haiku.
 # Writes results to the llm_label column (added if missing).
 # Original topic_label (keyword list) is preserved untouched.
+#
+# Processes in batches of BATCH_SIZE unique keyword sets, writing to DB
+# after each batch — safe to Ctrl+C and resume at any time.
 
 from __future__ import annotations
 
@@ -18,12 +21,13 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 MODEL = "claude-haiku-4-5-20251001"
+BATCH_SIZE = 100  # unique keyword sets per batch; DB commit after each
 
 _PROMPTS = {
     "fr": "Mots-clés TV/presse française : {kw}\nTitre de sujet court (5 mots max, français) :",
     "en": "News keywords: {kw}\nShort topic headline (5 words max, English):",
     "es": "Palabras clave periodísticas: {kw}\nTítulo corto (5 palabras máx, español):",
-    "ar":  "كلمات مفتاحية إعلامية: {kw}\nعنوان موضوع قصير (5 كلمات كحد أقصى، عربي):",
+    "ar": "كلمات مفتاحية إعلامية: {kw}\nعنوان موضوع قصير (5 كلمات كحد أقصى، عربي):",
 }
 
 
@@ -56,7 +60,7 @@ async def _call_llm(
                 err_str = str(e)
                 if "rate_limit" in err_str:
                     wait = 60 / max(1, attempt + 1)
-                    logger.info(f"Rate limit hit — waiting {wait:.0f}s before retry {attempt + 1}/4")
+                    logger.info(f"Rate limit — waiting {wait:.0f}s (attempt {attempt + 1}/4)")
                     await asyncio.sleep(wait)
                 elif attempt == 3:
                     logger.warning(f"LLM failed permanently for {keywords[:3]}: {e}")
@@ -66,34 +70,21 @@ async def _call_llm(
         return key, None
 
 
-async def _run_async(
+async def _run_batch(
     pairs: list[tuple[tuple, list[str], str]],
     concurrency: int,
 ) -> dict[tuple, str]:
+    """Run LLM calls for one batch. Returns key→label for successes."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set in environment")
     client = AsyncAnthropic(api_key=api_key)
     sem = asyncio.Semaphore(concurrency)
-    # 50 RPM limit → each worker must wait 1.2s × concurrency after completing,
-    # so total throughput = concurrency / (api_time + delay) ≤ 50/60 req/s
+    # 50 RPM: each worker waits 1.2s × concurrency so total rate ≤ 50/60 req/s
     delay = 1.2 * concurrency
-    total = len(pairs)
-    done_count = 0
-    lock = asyncio.Lock()
-
-    async def _tracked(key, kw, lang):
-        nonlocal done_count
-        result = await _call_llm(client, sem, key, kw, lang, delay)
-        async with lock:
-            done_count += 1
-            if done_count % 50 == 0 or done_count == total:
-                logger.info(f"  progress: {done_count}/{total} labels generated")
-        return result
-
-    tasks = [_tracked(key, kw, lang) for key, kw, lang in pairs]
-    results = await asyncio.gather(*tasks)
-    # Only keep successful labels (None = failed, will be retried on next run)
+    results = await asyncio.gather(
+        *[_call_llm(client, sem, key, kw, lang, delay) for key, kw, lang in pairs]
+    )
     return {k: v for k, v in results if v is not None}
 
 
@@ -122,65 +113,8 @@ def _fetch_unlabeled(cur, table: str, lang_col: str | None) -> list[dict]:
         return [{"id": r[0], "kw": list(r[1]), "lang": "fr"} for r in cur.fetchall()]
 
 
-def label_table(
-    table: str,
-    lang_col: str | None,
-    dry_run: bool = False,
-    concurrency: int = 5,
-) -> int:
-    """
-    Labels all unlabeled rows in `table`.
-    Returns the number of unique API calls made (or that would be made in dry-run).
-
-    Uses three short-lived DB connections so the connection is never held open
-    during the LLM phase (Neon closes idle connections after ~5 minutes).
-    """
-    # Phase 1 — read (short connection)
-    with get_conn() as conn:
-        conn.autocommit = False
-        cur = conn.cursor()
-        _ensure_llm_label_column(cur, table)
-        conn.commit()
-        rows = _fetch_unlabeled(cur, table, lang_col)
-        cur.close()
-    # connection released here
-
-    if not rows:
-        logger.info(f"{table}: all rows already labeled.")
-        return 0
-
-    # Deduplicate on (sorted keywords, lang) — same content = one API call
-    unique: dict[tuple, tuple[list[str], str]] = {}
-    for row in rows:
-        key = (tuple(sorted(row["kw"])), row["lang"])
-        if key not in unique:
-            unique[key] = (row["kw"], row["lang"])
-
-    logger.info(f"{table}: {len(rows)} rows → {len(unique)} unique keyword sets.")
-
-    if dry_run:
-        for key, (kw, lang) in list(unique.items())[:3]:
-            logger.info(f"  sample [{lang}]: {kw[:5]}")
-        return len(unique)
-
-    # Phase 2 — LLM calls (no DB connection held)
-    pairs = [(k, kw, lang) for k, (kw, lang) in unique.items()]
-    label_map = asyncio.run(_run_async(pairs, concurrency=concurrency))
-
-    # Map back to row ids — skip rows whose label failed (keep llm_label NULL for retry)
-    updates = []
-    skipped = 0
-    for row in rows:
-        key = (tuple(sorted(row["kw"])), row["lang"])
-        label = label_map.get(key)
-        if label is None:
-            skipped += 1
-            continue
-        updates.append((label, row["id"]))
-    if skipped:
-        logger.info(f"{table}: {skipped} rows skipped (API failure) — will retry on next run.")
-
-    # Phase 3 — write results (fresh connection)
+def _write_batch(table: str, updates: list[tuple]) -> None:
+    """Open a fresh connection and write a batch of (label, id) pairs."""
     with get_conn() as conn:
         conn.autocommit = False
         cur = conn.cursor()
@@ -191,7 +125,91 @@ def label_table(
             page_size=500,
         )
         conn.commit()
-        logger.info(f"{table}: {len(updates)} llm_label values written.")
         cur.close()
 
-    return len(unique)
+
+def label_table(
+    table: str,
+    lang_col: str | None,
+    dry_run: bool = False,
+    concurrency: int = 1,
+) -> int:
+    """
+    Labels all unlabeled rows in `table` in batches of BATCH_SIZE.
+    Commits to DB after every batch — safe to interrupt and resume.
+    Returns the number of unique keyword sets processed.
+    """
+    # Phase 1 — fetch unlabeled rows (short connection, released immediately)
+    with get_conn() as conn:
+        conn.autocommit = False
+        cur = conn.cursor()
+        _ensure_llm_label_column(cur, table)
+        conn.commit()
+        rows = _fetch_unlabeled(cur, table, lang_col)
+        cur.close()
+
+    if not rows:
+        logger.info(f"{table}: all rows already labeled.")
+        return 0
+
+    # Deduplicate: same keyword set → one API call
+    unique: dict[tuple, tuple[list[str], str]] = {}
+    for row in rows:
+        key = (tuple(sorted(row["kw"])), row["lang"])
+        if key not in unique:
+            unique[key] = (row["kw"], row["lang"])
+
+    # Build key → [row_ids] index for fast writes
+    key_to_ids: dict[tuple, list[int]] = {}
+    for row in rows:
+        key = (tuple(sorted(row["kw"])), row["lang"])
+        key_to_ids.setdefault(key, []).append(row["id"])
+
+    n_unique = len(unique)
+    logger.info(f"{table}: {len(rows)} rows → {n_unique} unique keyword sets.")
+
+    if dry_run:
+        for key, (kw, lang) in list(unique.items())[:3]:
+            logger.info(f"  sample [{lang}]: {kw[:5]}")
+        return n_unique
+
+    # Phase 2 — batch loop: LLM → DB commit → next batch
+    all_pairs = [(k, kw, lang) for k, (kw, lang) in unique.items()]
+    n_batches = (n_unique + BATCH_SIZE - 1) // BATCH_SIZE
+    total_written = 0
+    total_skipped = 0
+
+    for batch_num, start in enumerate(range(0, n_unique, BATCH_SIZE), 1):
+        batch_pairs = all_pairs[start: start + BATCH_SIZE]
+        logger.info(
+            f"{table}: batch {batch_num}/{n_batches} "
+            f"({len(batch_pairs)} sets, {total_written} written so far)"
+        )
+
+        # LLM calls — no DB connection held
+        label_map = asyncio.run(_run_batch(batch_pairs, concurrency=concurrency))
+
+        # Build updates for this batch
+        updates: list[tuple] = []
+        for key, _, _ in batch_pairs:
+            label = label_map.get(key)
+            if label is None:
+                total_skipped += len(key_to_ids.get(key, []))
+                continue
+            for row_id in key_to_ids.get(key, []):
+                updates.append((label, row_id))
+
+        # Commit immediately
+        if updates:
+            _write_batch(table, updates)
+            total_written += len(updates)
+
+        logger.info(
+            f"{table}: batch {batch_num}/{n_batches} done — "
+            f"{total_written} labels written, {total_skipped} skipped"
+        )
+
+    logger.info(
+        f"{table}: complete — {total_written} written, {total_skipped} skipped (will retry on next run)."
+    )
+    return n_unique
