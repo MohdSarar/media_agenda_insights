@@ -9,7 +9,7 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 
-from dashboard.data_access import load_word_trend, load_keywords_range
+from dashboard.data_access import load_word_trend, load_word_trend_fulltext, load_keywords_range
 from dashboard.ui.components import section_header
 
 
@@ -115,6 +115,8 @@ def render(filters: dict) -> None:
     with st.spinner("Analyse des mots-clés surveillés…"):
         for word in wl:
             df = load_word_trend(word, db_min, db_max, media_type=mt or "tv")
+            if df.empty:
+                df = load_word_trend_fulltext(word, db_min, db_max, media_type=mt or "tv")
             trend_data[word] = df
             alert = _spike_alert(df, word, window=spike_window)
             if alert:

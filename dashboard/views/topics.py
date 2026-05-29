@@ -5,7 +5,12 @@ from io import StringIO
 import streamlit as st
 import altair as alt
 
-from dashboard.data_access import load_word_trend, load_topics_for_day, load_topics_range
+from dashboard.data_access import (
+    load_word_trend,
+    load_word_trend_fulltext,
+    load_topics_for_day,
+    load_topics_range,
+)
 from dashboard.ui.components import section_header
 
 
@@ -25,16 +30,49 @@ def render(filters: dict):
         focus_word = st.text_input(
             "Mot-clé à analyser",
             value="sécurité",
-            placeholder="ex: budget, ukraine, énergie…",
+            placeholder="ex: islam, gaza, voile, budget…",
             key="topics_focus_word",
         )
+
+        search_mode = st.radio(
+            "Mode de recherche",
+            ["Mots-clés indexés", "Recherche texte intégral"],
+            horizontal=True,
+            key="topics_search_mode",
+            help=(
+                "**Indexés** : cherche dans les mots-clés extraits (top 30/jour). "
+                "**Texte intégral** : cherche dans le texte brut de tous les articles "
+                "— trouve tous les sujets même non indexés (islam, gaza, voile…)."
+            ),
+        )
+
         st.subheader(f"Tendance : `{focus_word}`")
 
         if focus_word.strip():
-            df_trend = load_word_trend(focus_word.strip(), start_date, end_date, media_type="tv")
-            if df_trend.empty:
-                st.info("Ce mot-clé n'apparaît pas sur la période sélectionnée.")
+            word = focus_word.strip().lower()
+
+            if search_mode == "Mots-clés indexés":
+                df_trend = load_word_trend(word, start_date, end_date, media_type="tv")
+                source_label = "keywords_daily"
             else:
+                df_trend = load_word_trend_fulltext(word, start_date, end_date, media_type="tv")
+                source_label = "texte intégral"
+
+            if df_trend.empty:
+                if search_mode == "Mots-clés indexés":
+                    st.warning(
+                        f"**`{word}`** absent des mots-clés indexés pour cette période. "
+                        "Essayez le mode **Texte intégral** pour chercher dans tous les articles."
+                    )
+                else:
+                    st.info(f"Aucun article ne mentionne **`{word}`** sur la période sélectionnée.")
+            else:
+                total = int(df_trend["total_mentions"].sum())
+                st.caption(
+                    f"Source : {source_label} — "
+                    f"{total:,} mentions au total sur {df_trend['date'].nunique()} jours"
+                )
+
                 df_trend["date"] = df_trend["date"].dt.date
                 line = (
                     alt.Chart(df_trend)
@@ -48,6 +86,7 @@ def render(filters: dict):
                     .properties(height=300)
                 )
                 st.altair_chart(line, use_container_width=True)
+
                 with st.expander("Voir le tableau"):
                     st.dataframe(
                         df_trend[["date", "source", "total_mentions"]],
@@ -59,7 +98,7 @@ def render(filters: dict):
                 st.download_button(
                     "⬇️ Exporter tendance (CSV)",
                     data=csv_trend.getvalue(),
-                    file_name=f"trend_{focus_word}_{start_date}_{end_date}.csv",
+                    file_name=f"trend_{word}_{start_date}_{end_date}.csv",
                     mime="text/csv",
                     key="dl_trend",
                 )

@@ -370,6 +370,50 @@ def load_word_trend(
 
 
 @st.cache_data(ttl=1800)
+def load_word_trend_fulltext(
+    word: str,
+    start_date: date,
+    end_date: date,
+    media_type: Optional[str] = "tv",
+) -> pd.DataFrame:
+    """
+    Article-level trend search that bypasses keywords_daily entirely.
+    Searches title + summary in articles_raw using a word-boundary regex so
+    morphological variants are included (islam → islamiste, islamiques…).
+    Works for any word regardless of whether it made the top_n cut-off.
+    """
+    conn = get_connection()
+    # \m = word start boundary in PostgreSQL regex
+    pattern = r"\m" + word.lower()
+
+    query = """
+        SELECT
+            ar.published_at::date AS date,
+            ar.source,
+            ar.media_type,
+            COUNT(*) AS total_mentions
+        FROM articles_raw ar
+        WHERE ar.published_at::date BETWEEN %s AND %s
+          AND (LOWER(ar.title) ~ %s OR LOWER(COALESCE(ar.summary, '')) ~ %s)
+    """
+    params: List = [start_date, end_date, pattern, pattern]
+
+    if media_type:
+        query += " AND ar.media_type = %s"
+        params.append(media_type)
+
+    query += """
+        GROUP BY ar.published_at::date, ar.source, ar.media_type
+        ORDER BY date ASC, source ASC;
+    """
+    df = pd.read_sql_query(query, conn, params=params)
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date"])
+    return df
+
+
+@st.cache_data(ttl=1800)
 def load_narrative_clusters() -> pd.DataFrame:
     conn = get_connection()
     return pd.read_sql_query(
