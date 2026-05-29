@@ -38,9 +38,11 @@ async def _call_llm(
     key: tuple,
     keywords: list[str],
     lang: str,
-) -> tuple[tuple, str]:
+    delay: float,
+) -> tuple[tuple, str | None]:
+    """Returns (key, label) or (key, None) on unrecoverable failure."""
     async with sem:
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 msg = await client.messages.create(
                     model=MODEL,
@@ -48,12 +50,20 @@ async def _call_llm(
                     messages=[{"role": "user", "content": _build_prompt(keywords, lang)}],
                 )
                 label = msg.content[0].text.strip().rstrip(".,;:")
+                await asyncio.sleep(delay)
                 return key, label
             except Exception as e:
-                if attempt == 2:
-                    logger.warning(f"LLM failed for {keywords[:3]}: {e}")
-                    return key, ", ".join(keywords[:4])
-                await asyncio.sleep(2 ** attempt)
+                err_str = str(e)
+                if "rate_limit" in err_str:
+                    wait = 60 / max(1, attempt + 1)
+                    logger.info(f"Rate limit hit — waiting {wait:.0f}s before retry {attempt + 1}/4")
+                    await asyncio.sleep(wait)
+                elif attempt == 3:
+                    logger.warning(f"LLM failed permanently for {keywords[:3]}: {e}")
+                    return key, None
+                else:
+                    await asyncio.sleep(2 ** attempt)
+        return key, None
 
 
 async def _run_async(
@@ -65,9 +75,12 @@ async def _run_async(
         raise RuntimeError("ANTHROPIC_API_KEY not set in environment")
     client = AsyncAnthropic(api_key=api_key)
     sem = asyncio.Semaphore(concurrency)
-    tasks = [_call_llm(client, sem, key, kw, lang) for key, kw, lang in pairs]
+    # 50 RPM limit → 1 request per 1.3s to stay safely under
+    delay = 1.3 / max(1, concurrency)
+    tasks = [_call_llm(client, sem, key, kw, lang, delay) for key, kw, lang in pairs]
     results = await asyncio.gather(*tasks)
-    return dict(results)
+    # Only keep successful labels (None = failed, will be retried on next run)
+    return {k: v for k, v in results if v is not None}
 
 
 def _ensure_llm_label_column(cur, table: str) -> None:
@@ -137,12 +150,18 @@ def label_table(
         pairs = [(k, kw, lang) for k, (kw, lang) in unique.items()]
         label_map = asyncio.run(_run_async(pairs, concurrency=concurrency))
 
-        # Map back to row ids
+        # Map back to row ids — skip rows whose label failed (keep llm_label NULL for retry)
         updates = []
+        skipped = 0
         for row in rows:
             key = (tuple(sorted(row["kw"])), row["lang"])
-            label = label_map.get(key, ", ".join(row["kw"][:4]))
+            label = label_map.get(key)
+            if label is None:
+                skipped += 1
+                continue
             updates.append((label, row["id"]))
+        if skipped:
+            logger.info(f"{table}: {skipped} rows skipped (API failure) — will retry on next run.")
 
         execute_batch(
             cur,
