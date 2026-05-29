@@ -63,11 +63,11 @@ def main() -> None:
         sys.exit(0)
 
     print("\nStep 1/2 — TV/press topics (topics_daily)...")
-    n_tv = label_table("topics_daily", lang_col=None)
+    n_tv = label_table("topics_daily", lang_col=None, concurrency=1)
     print(f"  ✓ {n_tv:,} unique labels generated.")
 
     print("\nStep 2/2 — France 24 topics (topics_daily_f24)...")
-    n_f24 = label_table("topics_daily_f24", lang_col="lang")
+    n_f24 = label_table("topics_daily_f24", lang_col="lang", concurrency=1)
     print(f"  ✓ {n_f24:,} unique labels generated.")
 
     total = n_tv + n_f24

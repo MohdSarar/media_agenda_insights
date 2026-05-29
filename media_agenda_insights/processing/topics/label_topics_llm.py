@@ -75,8 +75,9 @@ async def _run_async(
         raise RuntimeError("ANTHROPIC_API_KEY not set in environment")
     client = AsyncAnthropic(api_key=api_key)
     sem = asyncio.Semaphore(concurrency)
-    # 50 RPM limit → 1 request per 1.3s to stay safely under
-    delay = 1.3 / max(1, concurrency)
+    # 50 RPM limit → each worker must wait 1.2s × concurrency after completing,
+    # so total throughput = concurrency / (api_time + delay) ≤ 50/60 req/s
+    delay = 1.2 * concurrency
     tasks = [_call_llm(client, sem, key, kw, lang, delay) for key, kw, lang in pairs]
     results = await asyncio.gather(*tasks)
     # Only keep successful labels (None = failed, will be retried on next run)
