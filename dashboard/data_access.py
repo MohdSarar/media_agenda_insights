@@ -678,6 +678,91 @@ def load_entity_stance_trend(
         return pd.DataFrame()
 
 
+def _ensure_watchlist_tables(conn) -> None:
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS watchlist_terms (
+            id       SERIAL PRIMARY KEY,
+            term     TEXT NOT NULL UNIQUE,
+            added_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS alerts_sent (
+            id         BIGSERIAL PRIMARY KEY,
+            term       TEXT    NOT NULL,
+            alert_date DATE    NOT NULL,
+            z_score    FLOAT,
+            channel    TEXT    NOT NULL DEFAULT 'telegram',
+            sent_at    TIMESTAMP DEFAULT NOW(),
+            UNIQUE (term, alert_date, channel)
+        );
+    """)
+    conn.commit()
+    cur.close()
+
+
+def load_watchlist_terms() -> list[str]:
+    """Return watchlist terms from DB (no caching — always fresh)."""
+    try:
+        conn = get_connection()
+        _ensure_watchlist_tables(conn)
+        cur = conn.cursor()
+        cur.execute("SELECT term FROM watchlist_terms ORDER BY term")
+        terms = [r[0] for r in cur.fetchall()]
+        cur.close()
+        return terms
+    except Exception:
+        return []
+
+
+def add_watchlist_term(term: str) -> bool:
+    """Insert a term. Returns True if inserted, False if duplicate/error."""
+    try:
+        conn = get_connection()
+        _ensure_watchlist_tables(conn)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO watchlist_terms (term) VALUES (%s) ON CONFLICT (term) DO NOTHING",
+            (term.strip().lower(),),
+        )
+        inserted = cur.rowcount > 0
+        conn.commit()
+        cur.close()
+        return inserted
+    except Exception:
+        return False
+
+
+def remove_watchlist_term(term: str) -> None:
+    """Delete a term from the watchlist."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM watchlist_terms WHERE term = %s", (term,))
+        conn.commit()
+        cur.close()
+    except Exception:
+        pass
+
+
+@st.cache_data(ttl=900)
+def load_alert_history(limit: int = 50) -> pd.DataFrame:
+    """Return recent sent alerts from alerts_sent."""
+    conn = get_connection()
+    try:
+        return pd.read_sql_query(
+            """
+            SELECT term, alert_date, z_score, channel, sent_at
+            FROM alerts_sent
+            ORDER BY sent_at DESC
+            LIMIT %s
+            """,
+            conn,
+            params=[limit],
+        )
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=1800)
 def load_weekly_digests(limit: int = 12) -> pd.DataFrame:
     """Return the most recent weekly digests."""

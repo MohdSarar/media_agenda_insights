@@ -1,5 +1,5 @@
 # dashboard/views/watchlist.py
-# Feature 8 — Watchlist / Keyword Alerts
+# Feature 4 — Watchlist persistence + push alerts
 
 from __future__ import annotations
 from io import StringIO
@@ -9,42 +9,30 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 
-from dashboard.data_access import load_word_trend, load_word_trend_fulltext, load_keywords_range
+from dashboard.data_access import (
+    load_word_trend,
+    load_word_trend_fulltext,
+    load_watchlist_terms,
+    add_watchlist_term,
+    remove_watchlist_term,
+    load_alert_history,
+)
 from dashboard.ui.components import section_header
 
 
-_DEFAULT_WATCHLIST = ["sécurité", "budget", "énergie", "ukraine", "immigration"]
-_SS_KEY = "watchlist_items"
-
-
-def _get_watchlist() -> list[str]:
-    if _SS_KEY not in st.session_state:
-        st.session_state[_SS_KEY] = list(_DEFAULT_WATCHLIST)
-    return st.session_state[_SS_KEY]
-
-
 def _spike_alert(df: pd.DataFrame, word: str, window: int = 7, z_thresh: float = 2.0) -> dict | None:
-    """
-    Returns spike info if the last `window` days average is z_thresh
-    standard deviations above the historical mean, else None.
-    """
     if df.empty or len(df) < window + 2:
         return None
-
     df = df.sort_values("date")
     daily = df.groupby("date")["total_mentions"].sum().reset_index()
-
     if len(daily) < window + 2:
         return None
-
     baseline = daily.iloc[:-window]["total_mentions"]
     recent = daily.iloc[-window:]["total_mentions"]
-
     mu = baseline.mean()
     sigma = baseline.std() or 1.0
     recent_mean = recent.mean()
     z = (recent_mean - mu) / sigma
-
     if z >= z_thresh:
         return {
             "word": word,
@@ -64,11 +52,11 @@ def render(filters: dict) -> None:
 
     section_header(
         "Watchlist & Alertes",
-        "Surveillez vos mots-clés et détectez les pics de couverture en temps réel",
+        "Surveillez vos mots-clés et recevez des alertes push (Telegram) sur les pics",
     )
 
-    # ── Watchlist management ──────────────────────────────────────────────────
-    wl = _get_watchlist()
+    # ── Watchlist management (DB-backed) ─────────────────────────────────────
+    wl = load_watchlist_terms()
 
     with st.sidebar:
         st.markdown("---")
@@ -80,9 +68,12 @@ def render(filters: dict) -> None:
         )
         if st.button("➕ Ajouter", key="wl_add_btn"):
             w = new_word.strip().lower()
-            if w and w not in wl:
-                wl.append(w)
-                st.session_state[_SS_KEY] = wl
+            if w:
+                ok = add_watchlist_term(w)
+                if ok:
+                    st.success(f"« {w} » ajouté.")
+                else:
+                    st.info(f"« {w} » est déjà dans la watchlist.")
                 st.rerun()
 
         to_remove = st.multiselect(
@@ -92,16 +83,20 @@ def render(filters: dict) -> None:
             key="wl_remove",
         )
         if to_remove:
-            st.session_state[_SS_KEY] = [w for w in wl if w not in to_remove]
+            for w in to_remove:
+                remove_watchlist_term(w)
             st.rerun()
 
-    wl = _get_watchlist()
+    wl = load_watchlist_terms()
 
     if not wl:
-        st.info("Votre watchlist est vide. Ajoutez des mots-clés dans la barre latérale.")
+        st.info(
+            "Votre watchlist est vide. Ajoutez des mots-clés dans la barre latérale.\n\n"
+            "**Mots suggérés** : sécurité, budget, énergie, ukraine, immigration"
+        )
         return
 
-    # ── Alert detection ───────────────────────────────────────────────────────
+    # ── Alert detection controls ──────────────────────────────────────────────
     ctrl1, ctrl2 = st.columns([2, 2])
     with ctrl1:
         media_type = st.selectbox("Type de media", ["tv", "press", "ALL"], key="wl_media")
@@ -126,34 +121,55 @@ def render(filters: dict) -> None:
     if alerts:
         st.markdown("### 🚨 Alertes détectées")
         for a in sorted(alerts, key=lambda x: x["z_score"], reverse=True):
-            with st.container():
-                st.markdown(
-                    f"""
-                    <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);
-                                border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.5rem;">
-                        <span style="color:#ef4444;font-weight:700;font-size:1.05rem;">
-                            ⚡ `{a['word']}`
-                        </span>
-                        &nbsp;&nbsp;
-                        <span style="color:#fca5a5;">
-                            Z-score : <strong>{a['z_score']}</strong> —
-                            Moy. récente : <strong>{a['recent_avg']:.0f}</strong>
-                            vs historique : <strong>{a['baseline_avg']:.0f}</strong>
-                        </span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            st.markdown(
+                f"""
+                <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);
+                            border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.5rem;">
+                    <span style="color:#ef4444;font-weight:700;font-size:1.05rem;">
+                        ⚡ `{a['word']}`
+                    </span>
+                    &nbsp;&nbsp;
+                    <span style="color:#fca5a5;">
+                        Z-score : <strong>{a['z_score']}</strong> —
+                        Moy. récente : <strong>{a['recent_avg']:.0f}</strong>
+                        vs historique : <strong>{a['baseline_avg']:.0f}</strong>
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         st.markdown("---")
     else:
         st.success(f"Aucun pic significatif détecté sur les {spike_window} derniers jours.")
         st.markdown("---")
 
+    # ── Push alert info ───────────────────────────────────────────────────────
+    with st.expander("📣 Alertes push Telegram", expanded=False):
+        st.markdown(
+            """
+            Pour recevoir des notifications Telegram automatiques sur les pics détectés :
+
+            1. Créez un bot via [@BotFather](https://t.me/botfather) et récupérez le token.
+            2. Obtenez votre `CHAT_ID` via [@userinfobot](https://t.me/userinfobot).
+            3. Définissez les variables d'environnement :
+               ```
+               TELEGRAM_BOT_TOKEN=your_token
+               TELEGRAM_CHAT_ID=your_chat_id
+               ```
+            4. Ajoutez ce script au cron ou à `pipeline.sh` :
+               ```bash
+               python alerts/send_alerts.py --days 7
+               ```
+
+            Les alertes sont dédupliquées — un seul envoi par (terme, jour, canal).
+            """
+        )
+
     # ── Per-keyword trends grid ───────────────────────────────────────────────
     st.markdown("### Tendances sur la période")
 
     cols_per_row = 2
-    rows_of_words = [wl[i : i + cols_per_row] for i in range(0, len(wl), cols_per_row)]
+    rows_of_words = [wl[i: i + cols_per_row] for i in range(0, len(wl), cols_per_row)]
 
     for row_words in rows_of_words:
         cols = st.columns(cols_per_row)
@@ -184,7 +200,8 @@ def render(filters: dict) -> None:
                             opacity=0.15,
                         )
                         .encode(
-                            x=alt.X("date:T", title=None, axis=alt.Axis(format="%d %b", labelFontSize=9)),
+                            x=alt.X("date:T", title=None,
+                                    axis=alt.Axis(format="%d %b", labelFontSize=9)),
                             y=alt.Y("total_mentions:Q", title=None),
                             tooltip=["date:T", alt.Tooltip("total_mentions:Q", format=",d")],
                         )
@@ -195,6 +212,20 @@ def render(filters: dict) -> None:
                     st.altair_chart(line, use_container_width=True)
                     total = int(df["total_mentions"].sum())
                     st.caption(f"Total période : {total:,} mentions")
+
+    # ── Alert history ─────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Historique des alertes envoyées")
+    hist_df = load_alert_history()
+    if hist_df.empty:
+        st.caption(
+            "Aucune alerte encore envoyée. "
+            "Lancez `python alerts/send_alerts.py` pour scanner les pics."
+        )
+    else:
+        hist_df["sent_at"] = pd.to_datetime(hist_df["sent_at"]).dt.strftime("%d/%m/%Y %H:%M")
+        hist_df.columns = ["Terme", "Date alerte", "Z-score", "Canal", "Envoyé le"]
+        st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
     # ── Export ────────────────────────────────────────────────────────────────
     st.markdown("---")

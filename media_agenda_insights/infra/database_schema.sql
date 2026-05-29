@@ -303,3 +303,20 @@ CREATE TABLE IF NOT EXISTS weekly_digests (
   context_json JSONB,
   generated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Persistent watchlist and alert history (Feature 4)
+CREATE TABLE IF NOT EXISTS watchlist_terms (
+  id       SERIAL PRIMARY KEY,
+  term     TEXT NOT NULL UNIQUE,
+  added_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS alerts_sent (
+  id         BIGSERIAL PRIMARY KEY,
+  term       TEXT NOT NULL,
+  alert_date DATE NOT NULL,
+  z_score    FLOAT,
+  channel    TEXT NOT NULL DEFAULT 'telegram',
+  sent_at    TIMESTAMP DEFAULT NOW(),
+  UNIQUE (term, alert_date, channel)
+);
