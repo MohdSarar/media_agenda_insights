@@ -557,3 +557,44 @@ def load_entity_source_heatmap(
     params = [start_date, end_date, media_type, entity_label, top_n,
               entity_label, start_date, end_date, media_type]
     return pd.read_sql_query(query, conn, params=params)
+
+
+@st.cache_data(ttl=900)
+def count_articles_by_source(
+    start_date: date,
+    end_date: date,
+    media_type: Optional[str] = None,
+) -> dict:
+    """Return {source: article_count} for the period — used for confidence gating."""
+    conn = get_connection()
+    query = """
+        SELECT source, COUNT(*) AS n
+        FROM articles_raw
+        WHERE published_at::date BETWEEN %s AND %s
+    """
+    params: list = [start_date, end_date]
+    if media_type:
+        query += " AND media_type = %s"
+        params.append(media_type)
+    query += " GROUP BY source ORDER BY source"
+    try:
+        df = pd.read_sql_query(query, conn, params=params)
+        return dict(zip(df["source"], df["n"].astype(int)))
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=3600)
+def load_dashboard_config() -> dict:
+    """Load pipeline.yaml — used to read config thresholds in dashboard views."""
+    from pathlib import Path
+    import yaml
+    for parent in Path(__file__).parents:
+        candidate = parent / "media_agenda_insights" / "infra" / "config" / "pipeline.yaml"
+        if candidate.exists():
+            try:
+                with open(candidate, encoding="utf-8") as f:
+                    return yaml.safe_load(f) or {}
+            except Exception:
+                return {}
+    return {}

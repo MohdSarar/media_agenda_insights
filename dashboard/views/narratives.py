@@ -11,8 +11,10 @@ from dashboard.data_access import (
     load_lemmas_range,
     load_narrative_clusters,
     load_narrative_distribution_by_source,
+    count_articles_by_source,
+    load_dashboard_config,
 )
-from dashboard.ui.components import section_header
+from dashboard.ui.components import section_header, render_confidence
 
 THEME_DEFS = {
     "Sécurité / Police": [
@@ -114,6 +116,13 @@ def render(filters: dict):
 
     df_lemmas = load_lemmas_range(start_date, end_date, media_type="tv")
     df_lemmas = df_lemmas[df_lemmas["source"].isin(selected_sources)]
+
+    counts = count_articles_by_source(start_date, end_date, media_type="tv")
+    min_n = load_dashboard_config().get("confidence", {}).get("min_n", 8)
+    if counts and selected_sources:
+        active_counts = {s: counts.get(s, 0) for s in selected_sources if s in counts}
+        if active_counts:
+            render_confidence(min(active_counts.values()), min_n)
 
     if df_kw.empty or df_lemmas.empty:
         st.info("Pas assez de données sur cette période / ces chaînes.")

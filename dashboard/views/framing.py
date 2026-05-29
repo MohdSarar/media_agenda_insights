@@ -10,8 +10,8 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 
-from dashboard.data_access import load_keywords_range
-from dashboard.ui.components import section_header
+from dashboard.data_access import load_keywords_range, count_articles_by_source, load_dashboard_config
+from dashboard.ui.components import section_header, render_confidence
 
 
 # ── Frame lexicons (French + some English for press) ─────────────────────────
@@ -118,9 +118,11 @@ def render(filters: dict) -> None:
         )
 
     mt = None if media_type == "ALL" else media_type
+    min_n = load_dashboard_config().get("confidence", {}).get("min_n", 8)
 
     with st.spinner("Analyse du framing…"):
         kw_df = load_keywords_range(start, end, media_type=mt or "tv")
+        counts = count_articles_by_source(start, end, media_type=mt or "tv")
 
     if kw_df.empty:
         st.info("Pas de données mots-clés pour cette période.")
@@ -130,8 +132,15 @@ def render(filters: dict) -> None:
     all_sources = sorted(kw_df["source"].unique().tolist())
     if filter_source:
         kw_df = kw_df[kw_df["source"].isin(filter_source)]
+        active_counts = {s: counts.get(s, 0) for s in filter_source}
+    else:
+        active_counts = counts
 
     frame_df = _score_frames(kw_df)
+
+    # ── Confidence gating ─────────────────────────────────────────────────────
+    if active_counts:
+        render_confidence(min(active_counts.values()), min_n)
 
     if frame_df.empty or frame_df["coverage"].sum() == 0:
         st.info("Aucun mot-clé de framing détecté sur cette période.")

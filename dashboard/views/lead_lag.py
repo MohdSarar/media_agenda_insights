@@ -10,8 +10,8 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 
-from dashboard.data_access import load_keywords_range, load_agenda_gap
-from dashboard.ui.components import section_header
+from dashboard.data_access import load_keywords_range, load_agenda_gap, load_dashboard_config
+from dashboard.ui.components import section_header, render_confidence
 
 
 def _cross_correlation(
@@ -122,6 +122,10 @@ def render(filters: dict) -> None:
     if ts_a.empty or ts_b.empty:
         st.warning(f"Le mot-clé `{word}` n'est pas couvert par l'une des deux sources.")
     else:
+        min_n = load_dashboard_config().get("confidence", {}).get("min_n", 8)
+        n_obs = min(ts_a.astype(bool).sum(), ts_b.astype(bool).sum())
+        render_confidence(int(n_obs), min_n)
+
         ccf_df = _cross_correlation(ts_a, ts_b, max_lag=max_lag)
         best_lag = int(ccf_df.loc[ccf_df["correlation"].idxmax(), "lag"])
         best_corr = float(ccf_df["correlation"].max())

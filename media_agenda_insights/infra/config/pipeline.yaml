@@ -22,3 +22,6 @@ http:
 
 retention:
   raw_days: 90   # delete raw rows older than this; analytics tables are never purged
+
+confidence:
+  min_n: 8       # minimum article count to consider a derived metric reliable

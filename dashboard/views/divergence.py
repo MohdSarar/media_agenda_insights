@@ -10,8 +10,8 @@ import pandas as pd
 import altair as alt
 import streamlit as st
 
-from dashboard.data_access import load_keywords_range
-from dashboard.ui.components import section_header
+from dashboard.data_access import load_keywords_range, count_articles_by_source, load_dashboard_config
+from dashboard.ui.components import section_header, render_confidence
 
 
 def _divergence_score(df: pd.DataFrame, top_n: int = 50) -> pd.DataFrame:
@@ -83,13 +83,21 @@ def render(filters: dict) -> None:
             "Mots-clés pris en compte", 20, 200, 50, 10, key="div_top_words"
         )
 
+    min_n = load_dashboard_config().get("confidence", {}).get("min_n", 8)
+
     with st.spinner("Calcul des divergences…"):
         kw_df = load_keywords_range(start, end, media_type=media_type)
+        counts = count_articles_by_source(start, end, media_type=media_type)
         div_df = _divergence_score(kw_df, top_n=top_n_words)
 
     if div_df.empty:
         st.info("Pas assez de données pour calculer les divergences.")
         return
+
+    # ── Confidence gating ─────────────────────────────────────────────────────
+    if counts:
+        min_count = min(counts.values())
+        render_confidence(min_count, min_n)
 
     # ── KPIs ──────────────────────────────────────────────────────────────────
     k1, k2, k3 = st.columns(3)
