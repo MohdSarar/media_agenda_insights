@@ -73,6 +73,11 @@ def main():
         try:
             _qs = date.fromisoformat(qp.get("start", ""))
             _qe = date.fromisoformat(qp.get("end", ""))
+            # Clamp to available range so Streamlit doesn't raise
+            _qs = max(db_min, min(_qs, db_max))
+            _qe = max(db_min, min(_qe, db_max))
+            if _qs > _qe:
+                _qs = db_min
             _default = (_qs, _qe)
         except (ValueError, TypeError):
             _default = (db_min, db_max)
