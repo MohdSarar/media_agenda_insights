@@ -48,9 +48,17 @@ def get_connection():
     return conn
 
 
+def _safe_query(query: str, conn, params=None) -> pd.DataFrame:
+    """Execute a SQL query and return empty DataFrame on any error (missing table, etc.)."""
+    try:
+        return pd.read_sql_query(query, conn, params=params)
+    except Exception:
+        return pd.DataFrame()
+
+
 def _read_table(table_name: str, columns: str = "*") -> pd.DataFrame:
     conn = get_connection()
-    return pd.read_sql_query(f"SELECT {columns} FROM {table_name};", conn)
+    return _safe_query(f"SELECT {columns} FROM {table_name};", conn)
 
 
 @st.cache_data(ttl=3600)
@@ -88,7 +96,7 @@ def get_sources(media_type: Optional[str] = None) -> List[str]:
         params.append(media_type)
 
     query = f"SELECT DISTINCT source FROM articles_raw WHERE {' AND '.join(where)} ORDER BY source;"
-    df = pd.read_sql_query(query, conn, params=params or None)
+    df = _safe_query(query, conn, params=params or None)
     return ["ALL"] + df["source"].dropna().tolist()
 
 
@@ -110,7 +118,7 @@ def load_keywords_for_day(
         params.append(media_type)
 
     query += " ORDER BY rank ASC, source ASC;"
-    return pd.read_sql_query(query, conn, params=params)
+    return _safe_query(query, conn, params=params)
 
 
 @st.cache_data(ttl=900)
@@ -132,7 +140,7 @@ def load_keywords_range(
         params.append(media_type)
 
     query += " GROUP BY date, source, media_type, word ORDER BY date ASC, source ASC, total_count DESC;"
-    df = pd.read_sql_query(query, conn, params=params)
+    df = _safe_query(query, conn, params=params)
 
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -159,7 +167,7 @@ def load_lemmas_range(
         query += " AND ar.media_type = %s"
         params.append(media_type)
 
-    df = pd.read_sql_query(query, conn, params=params)
+    df = _safe_query(query, conn, params=params)
     if df.empty:
         return df
 
@@ -199,7 +207,7 @@ def load_topics_range(
         ORDER BY total_articles DESC
         LIMIT %s;
     """
-    df = pd.read_sql_query(query, conn, params=[start_date, end_date, media_type, top_n])
+    df = _safe_query(query, conn, params=[start_date, end_date, media_type, top_n])
     if not df.empty:
         df["first_seen"] = pd.to_datetime(df["first_seen"]).dt.date
         df["last_seen"] = pd.to_datetime(df["last_seen"]).dt.date
@@ -237,7 +245,7 @@ def load_agenda_gap(start_date: date, end_date: date) -> pd.DataFrame:
         ORDER BY tv_count DESC, social_score DESC
         LIMIT 300;
     """
-    df = pd.read_sql_query(query, conn, params=[start_date, end_date, start_date, end_date])
+    df = _safe_query(query, conn, params=[start_date, end_date, start_date, end_date])
     if df.empty:
         return df
     tv_max = df["tv_count"].max() or 1
@@ -256,7 +264,7 @@ def load_lifecycle(start_date: date, end_date: date, top_n: int = 30) -> pd.Data
     conn = get_connection()
 
     # Try the pre-computed lifetime table first
-    df = pd.read_sql_query(
+    df = _safe_query(
         """
         SELECT topic_label,
                first_seen_date AS first_seen,
@@ -275,7 +283,7 @@ def load_lifecycle(start_date: date, end_date: date, top_n: int = 30) -> pd.Data
 
     if df.empty:
         # Fallback: compute from topics_daily on the fly
-        df = pd.read_sql_query(
+        df = _safe_query(
             """
             SELECT topic_label,
                    MIN(date) AS first_seen,
@@ -316,7 +324,7 @@ def load_topics_for_day(selected_date: date, only_tv: bool = True) -> pd.DataFra
         query += " AND media_type = 'tv' AND source = 'ALL'"
 
     query += " ORDER BY topic_id ASC;"
-    return pd.read_sql_query(query, conn, params=params)
+    return _safe_query(query, conn, params=params)
 
 
 @st.cache_data(ttl=900)
@@ -333,7 +341,7 @@ def load_topics_timeseries(
         GROUP BY date, source, media_type
         ORDER BY date ASC, source ASC;
     """
-    df = pd.read_sql_query(query, conn, params=[start_date, end_date, media_type])
+    df = _safe_query(query, conn, params=[start_date, end_date, media_type])
 
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -361,7 +369,7 @@ def load_word_trend(
         params.append(media_type)
 
     query += " GROUP BY date, source, media_type ORDER BY date ASC, source ASC;"
-    df = pd.read_sql_query(query, conn, params=params)
+    df = _safe_query(query, conn, params=params)
 
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -406,7 +414,7 @@ def load_word_trend_fulltext(
         GROUP BY ar.published_at::date, ar.source, ar.media_type
         ORDER BY date ASC, source ASC;
     """
-    df = pd.read_sql_query(query, conn, params=params)
+    df = _safe_query(query, conn, params=params)
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
@@ -416,7 +424,7 @@ def load_word_trend_fulltext(
 @st.cache_data(ttl=1800)
 def load_narrative_clusters() -> pd.DataFrame:
     conn = get_connection()
-    return pd.read_sql_query(
+    return _safe_query(
         "SELECT cluster_id, label, top_keywords, size, created_at FROM narratives_clusters ORDER BY size DESC;",
         conn,
     )
@@ -425,7 +433,7 @@ def load_narrative_clusters() -> pd.DataFrame:
 @st.cache_data(ttl=1800)
 def load_narrative_distribution_by_source() -> pd.DataFrame:
     conn = get_connection()
-    return pd.read_sql_query(
+    return _safe_query(
         """
         SELECT na.cluster_id, ar.source, COUNT(*) AS article_count
         FROM narratives_assignments na
@@ -478,7 +486,7 @@ def load_ner_entities(
         params.append(entity_labels)
     params.append(top_n)
 
-    df = pd.read_sql_query(query, conn, params=params)
+    df = _safe_query(query, conn, params=params)
     return df
 
 
@@ -505,7 +513,7 @@ def load_entity_trend(
         GROUP BY ar.published_at::date, ar.source
         ORDER BY date ASC, source ASC;
     """
-    df = pd.read_sql_query(query, conn, params=[start_date, end_date, media_type, entity_text])
+    df = _safe_query(query, conn, params=[start_date, end_date, media_type, entity_text])
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"])
     return df
@@ -556,7 +564,7 @@ def load_entity_source_heatmap(
     """
     params = [start_date, end_date, media_type, entity_label, top_n,
               entity_label, start_date, end_date, media_type]
-    return pd.read_sql_query(query, conn, params=params)
+    return _safe_query(query, conn, params=params)
 
 
 @st.cache_data(ttl=900)
@@ -578,7 +586,7 @@ def count_articles_by_source(
         params.append(media_type)
     query += " GROUP BY source ORDER BY source"
     try:
-        df = pd.read_sql_query(query, conn, params=params)
+        df = _safe_query(query, conn, params=params)
         return dict(zip(df["source"], df["n"].astype(int)))
     except Exception:
         return {}
@@ -640,7 +648,7 @@ def load_entity_stance(
         params.append(entity_label)
     params.append(top_n)
     try:
-        return pd.read_sql_query(query, conn, params=params)
+        return _safe_query(query, conn, params=params)
     except Exception:
         return pd.DataFrame()
 
@@ -670,7 +678,7 @@ def load_entity_stance_trend(
         ORDER BY date ASC, source ASC;
     """
     try:
-        df = pd.read_sql_query(query, conn, params=[entity_text, start_date, end_date])
+        df = _safe_query(query, conn, params=[entity_text, start_date, end_date])
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -749,7 +757,7 @@ def load_alert_history(limit: int = 50) -> pd.DataFrame:
     """Return recent sent alerts from alerts_sent."""
     conn = get_connection()
     try:
-        return pd.read_sql_query(
+        return _safe_query(
             """
             SELECT term, alert_date, z_score, channel, sent_at
             FROM alerts_sent
@@ -768,7 +776,7 @@ def load_weekly_digests(limit: int = 12) -> pd.DataFrame:
     """Return the most recent weekly digests."""
     conn = get_connection()
     try:
-        return pd.read_sql_query(
+        return _safe_query(
             """
             SELECT week_start, week_end, digest_text, context_json, generated_at
             FROM weekly_digests
